@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Relatório de Mudanças</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            --color-accent: #2563eb; /* blue-600 */
+            --color-accent-hover: #1d4ed8; /* blue-700 */
+            --color-success: #16a34a; /* green-600 */
+            --color-error: #dc2626; /* red-600 */
+        }
+        #logContainer .log-group h4 { margin-bottom: 4px; font-size: 14px; font-weight: 600; color: #4b5563; }
+        #logContainer .log-group p { margin: 0; font-size: 12px; color: #6b7280; word-break: break-all; }
+        #email-preview {
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        .status-message { padding: 1rem; border-radius: 0.375rem; margin: 0; border-width: 1px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .recipient-tag {
+            background-color: #e0e7ff; /* indigo-100 */
+            color: #3730a3; /* indigo-800 */
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px; /* rounded-full */
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.875rem; /* text-sm */
+            font-weight: 500;
+            margin: 0.25rem;
+        }
+        .recipient-tag button { margin-left: 0.5rem; color: #4338ca; background: none; border: none; cursor: pointer; font-size: 1.2rem; line-height: 1; }
+        .recipient-tag button:hover { color: #312e81; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="flex h-screen">
+        <!-- PAINEL DE CONTROLE (ESQUERDA) -->
+        <aside class="w-[400px] h-screen flex flex-col bg-white border-r border-slate-200 p-6 custom-scrollbar overflow-y-auto">
+            <header class="mb-6 pb-4 border-b border-slate-200">
+                <h1 class="text-2xl font-bold text-slate-900">Gestor de Relatórios</h1>
+                <p class="mt-1 text-sm text-slate-600">Gere, visualize e envie os relatórios do Comitê de Mudanças.</p>
+            </header>
+
+            <!-- SEÇÃO DE CONFIGURAÇÃO -->
+            <section class="mb-4">
+                <h2 class="text-lg font-semibold text-slate-700 mb-3">1. Configuração</h2>
+                <div class="space-y-4 rounded-md bg-slate-50 p-4 border border-slate-200">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Tipo de Relatório</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center cursor-pointer"><input type="radio" name="reportType" value="aprovadas" class="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500" checked><span class="ml-2 text-sm text-slate-700">Relatório de Aprovadas</span></label>
+                            <label class="flex items-center cursor-pointer"><input type="radio" name="reportType" value="previa" class="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500"><span class="ml-2 text-sm text-slate-700">Prévia do Comitê</span></label>
+                        </div>
+                    </div>
+                    <div id="attachmentSection">
+                        <label id="attachmentLabel" class="block text-sm font-medium text-slate-700">Ata da Reunião (CSV)</label>
+                        <input type="file" id="attachmentInput" class="mt-1 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SEÇÃO DE CONTEÚDO -->
+            <section class="mb-4">
+                <h2 class="text-lg font-semibold text-slate-700 mb-3">2. Conteúdo Adicional</h2>
+                <div class="rounded-md bg-slate-50 p-4 border border-slate-200">
+                    <label for="observacoesAdicionaisInput" class="block text-sm font-medium text-slate-700">Observações (Opcional)</label>
+                    <textarea id="observacoesAdicionaisInput" placeholder="Insira aqui qualquer observação..." class="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition min-h-[80px]"></textarea>
+                </div>
+            </section>
+            
+            <!-- SEÇÃO DE DESTINATÁRIOS -->
+            <section class="mb-4">
+                <h2 class="text-lg font-semibold text-slate-700 mb-3">3. Destinatários e Envio</h2>
+                <div class="space-y-4 rounded-md bg-slate-50 p-4 border border-slate-200">
+                    <button id="manage-recipients-button" class="w-full bg-slate-200 text-slate-800 font-bold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors duration-300">Gerenciar Destinatários (Para)</button>
+                    <div id="fixed-recipients-display" class="text-sm text-slate-600 text-center">Nenhum destinatário fixo carregado.</div>
+                    <button id="manage-cc-button" class="w-full bg-slate-200 text-slate-800 font-bold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors duration-300" disabled>Gerenciar Grupos (Cc)</button>
+                    <div id="cc-groups-display" class="text-sm text-slate-600 text-center">Nenhum grupo em cópia selecionado.</div>
+                    <div class="relative flex items-center">
+                        <div class="flex-grow border-t border-slate-300"></div>
+                        <span class="flex-shrink mx-4 text-slate-500 text-sm">Opções de Envio</span>
+                        <div class="flex-grow border-t border-slate-300"></div>
+                    </div>
+                    <label for="test-mode-toggle" class="flex items-center cursor-pointer p-2 rounded-md hover:bg-slate-200">
+                        <input type="checkbox" id="test-mode-toggle" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span class="ml-3 text-sm font-medium text-slate-700">Ativar Modo de Teste</span>
+                    </label>
+                </div>
+            </section>
+
+            <!-- AÇÕES -->
+            <section class="mt-auto pt-4 border-t border-slate-200">
+                <div class="space-y-3">
+                    <button id="loadDataButton" class="w-full bg-slate-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-colors duration-300 disabled:bg-slate-400 disabled:cursor-not-allowed">Gerar Prévia</button>
+                    <button id="sendButton" class="w-full bg-[var(--color-accent)] text-white font-bold py-2.5 px-4 rounded-lg hover:bg-[var(--color-accent-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-300 disabled:bg-slate-400 disabled:cursor-not-allowed" disabled>Enviar Relatório</button>
+                </div>
+            </section>
+            
+            <!-- LOG DE DESTINATÁRIOS -->
+            <div class="recipients-log mt-4 flex-grow flex flex-col min-h-[150px]">
+                <h3 class="text-base font-semibold text-slate-700 mb-2">Destinatários Dinâmicos (Grupos)</h3>
+                <div id="logContainer" class="flex-grow bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600 custom-scrollbar overflow-y-auto">
+                    <p class="loading-message text-slate-500">Aguardando dados...</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ÁREA DE PRÉ-VISUALIZAÇÃO (DIREITA) -->
+        <main class="flex-grow h-screen p-6 custom-scrollbar overflow-y-auto flex items-start justify-center bg-slate-100">
+            <div class="w-full max-w-3xl mx-auto">
+                <div id="email-preview" class="bg-white min-h-[600px]">
+                    <p class="loading-message p-10 text-slate-500">Carregando prévia do e-mail...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAIS -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-black bg-opacity-60 z-40 hidden"></div>
+    
+    <!-- Modal Genérico (Confirmação, Alerta, Prompt) -->
+    <div id="customModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md text-center">
+            <h3 id="modal-title" class="text-xl font-bold text-slate-900"></h3>
+            <p id="modal-message" class="text-sm text-slate-600 mt-2 mb-6"></p>
+            <input type="text" id="modal-input" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition mb-6" style="display: none;">
+            <div class="flex justify-end gap-3">
+                <button id="modal-btn-cancel" class="bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors">Cancelar</button>
+                <button id="modal-btn-confirm" class="bg-[var(--color-accent)] text-white font-bold py-2 px-4 rounded-lg hover:bg-[var(--color-accent-hover)] transition-colors">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Gerenciar Destinatários Fixos -->
+    <div id="fixed-recipients-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
+            <h3 class="text-lg font-bold text-gray-900">Gerenciar Destinatários Fixos (Para)</h3>
+            <p class="text-sm text-gray-600 mt-2">Adicione, remova ou carregue a lista padrão de e-mails.</p>
+            
+            <div class="mt-4 p-3 border rounded-md min-h-[128px] max-h-64 overflow-y-auto bg-gray-50 custom-scrollbar" id="recipient-tags-container"></div>
+
+            <div class="mt-4">
+                <label for="add-recipient-input" class="block text-sm font-medium text-gray-700">Adicionar novo e-mail</label>
+                <div class="mt-1 flex gap-2">
+                    <input type="email" id="add-recipient-input" class="flex-grow p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="nome@exemplo.com">
+                    <button id="add-recipient-btn" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700">Adicionar</button>
+                </div>
+                <p id="recipient-error-message" class="text-red-600 text-sm mt-1 h-4"></p>
+            </div>
+
+            <div class="mt-6 flex justify-between items-center">
+                <button id="load-default-recipients-btn" class="text-sm text-blue-600 hover:underline">Carregar lista padrão</button>
+                <div class="flex gap-3">
+                    <button id="cancel-edit-recipients" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">Cancelar</button>
+                    <button id="save-recipients-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Gerenciar Grupos CC -->
+    <div id="cc-groups-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
+            <h3 class="text-lg font-bold text-gray-900">Gerenciar Grupos em Cópia (Cc)</h3>
+            <p class="text-sm text-gray-600 mt-2">Selecione os grupos de destinatários que devem receber uma cópia do e-mail.</p>
+            
+            <div id="cc-groups-container" class="mt-4 p-3 border rounded-md min-h-[128px] max-h-64 overflow-y-auto bg-gray-50 custom-scrollbar space-y-2">
+                <!-- Checkboxes dos grupos serão inseridos aqui -->
+            </div>
+
+            <div class="mt-6 flex justify-end gap-3">
+                <button id="cancel-cc-groups" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button id="save-cc-groups" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Salvar Seleção</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // URLs e constantes
+        const URL_APROVADAS = 'https://prod-128.westus.logic.azure.com:443/workflows/68f5fe80ae2442d4b53fac09e49bd949/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=zUqYbIMukdgoXCKNItXtAekGJbCCmmjMd9sLhTkXnNg';
+        const URL_PREVIA_COMITE = 'https://prod-179.westus.logic.azure.com:443/workflows/ed98a518c3e44928a0abc12f456b20cf/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=95idTG67KfP-HKk5zR6cuAaMnKHEGghIcz-1xZjCa9Y';
+        const urlFluxoB_Envio = 'https://prod-76.westus.logic.azure.com:443/workflows/416859d347cd42e9bdae001d2f3caf04/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=gLZgIP7uqIjB0SYJlDCgLezyn_xpHr_prU_9roVsSgw';
+
+        const EMAILS_FIXOS_APROVADAS = 'mara.lassabia@assai.com.br;fernando.mazzei@assai.com.br;fabio.benevento@assai.com.br;nelson.alves@assai.com.br;eduardo.nader@assai.com.br;tiago.pichelli@assai.com.br;elcio.kamei@assai.com.br;felipe.nemeth@assai.com.br;laercio.junior@assai.com.br;raphael.fusco@assai.com.br;marilia.scatena@assai.com.br;claudia.lima@assai.com.br;denis.paiotti@assai.com.br;fabricio.rosa@assai.com.br;gabriela.graciano@assai.com.br;daniel.ribeiro@assai.com.br;luis.ramalho@assai.com.br;silas.souza@assai.com.br;carlos.negron@assai.com.br;yam.trigueiro@assai.com.br;leonardo.filho@assai.com.br;paulo.ribeiro@assai.com.br;magno.silva@assai.com.br;francisco.neto@assai.com.br;washington.santos@assai.com.br;joao.filho2@assai.com.br;michele.silva2@assai.com.br;paulo.rodrigues@assai.com.br;elisabete.brandao@assai.com.br;luis.silva@assai.com.br;renato.yamamoto@assai.com.br;tiago.bello@assai.com.br;elaine.silva2@assai.com.br;marcela.silva2@assai.com.br;maria.dias@assai.com.br;renato.viana@assai.com.br;sandra.santos@assai.com.br;celso.motta@assai.com.br;gilberto.caray@assai.com.br;cassio.rodrigues@assai.com.br;ti.qualidade@assai.com.br';
+        const EMAILS_FIXOS_PREVIA = '"Eduardo Nader" <eduardo.nader@assai.com.br>; "TIAGO PICHELLI" <tiago.pichelli@assai.com.br>; "Elcio Mitsuo Kamei" <elcio.kamei@assai.com.br>; "FELIPE FERNANDES NEMETH" <felipe.nemeth@assai.com.br>; "LAERCIO RODRIGUES DE QUEIROZ JUNIOR" <laercio.junior@assai.com.br>; "Raphael Fusco Martins" <raphael.fusco@assai.com.br>; "Marilia Gonzalez Ferreira Scatena" <marilia.scatena@assai.com.br>; "CLAUDIA CORDEIRO DE LIMA" <claudia.lima@assai.com.br>; "GABRIELA GRACIANO" <gabriela.graciano@assai.com.br>; "DANIEL ESTEVES RIBEIRO" <daniel.ribeiro@assai.com.br>; "YAM DOS SANTOS TRIGUEiro" <yam.trigueiro@assai.com.br>; "LEONARDO SANTINI MORETO FILHO" <leonardo.filho@assai.com.br>; "MICHELE APARECIDA MENDONCA DA SILVA" <michele.silva2@assai.com.br>; "ELISABETE BORGES BRANDAO" <elisabete.brandao@assai.com.br>; "LUIS FABIANO BERNARDES DA SILVA" <luis.silva@assai.com.br>; "RENATO MASAHICO YAMAMOTO" <renato.yamamoto@assai.com.br>; "Elaine Talita Domiciano Da Silva" <elaine.silva2@assai.com.br>; "MARCELA FELIX LUNA DA SILVA" <marcela.silva2@assai.com.br>; "CASSIO PAIVA RODRIGUES" <cassio.rodrigues@assai.com.br>; "TI Qualidade" <ti.qualidade@assai.com.br>';
+
+        // --- ELEMENTOS DO DOM ---
+        const sendButton = document.getElementById('sendButton');
+        const loadDataButton = document.getElementById('loadDataButton');
+        const logContainer = document.getElementById('logContainer');
+        const emailPreview = document.getElementById('email-preview');
+        const reportTypeRadios = document.querySelectorAll('input[name="reportType"]');
+        const attachmentSection = document.getElementById('attachmentSection');
+        const attachmentInput = document.getElementById('attachmentInput');
+        const observacoesAdicionaisInput = document.getElementById('observacoesAdicionaisInput');
+        const manageRecipientsButton = document.getElementById('manage-recipients-button');
+        const fixedRecipientsDisplay = document.getElementById('fixed-recipients-display');
+        const manageCcButton = document.getElementById('manage-cc-button');
+        const ccGroupsDisplay = document.getElementById('cc-groups-display');
+        const testModeToggle = document.getElementById('test-mode-toggle');
+        
+        // Elementos do Modal de Destinatários
+        const fixedRecipientsModal = document.getElementById('fixed-recipients-modal');
+        const recipientTagsContainer = document.getElementById('recipient-tags-container');
+        const addRecipientInput = document.getElementById('add-recipient-input');
+        const addRecipientBtn = document.getElementById('add-recipient-btn');
+        const recipientErrorMessage = document.getElementById('recipient-error-message');
+        const loadDefaultRecipientsBtn = document.getElementById('load-default-recipients-btn');
+        const cancelEditRecipientsBtn = document.getElementById('cancel-edit-recipients');
+        const saveRecipientsBtn = document.getElementById('save-recipients-btn');
+        const modalBackdrop = document.getElementById('modal-backdrop');
+
+        // Elementos do Modal CC
+        const ccGroupsModal = document.getElementById('cc-groups-modal');
+        const ccGroupsContainer = document.getElementById('cc-groups-container');
+        const cancelCcGroupsBtn = document.getElementById('cancel-cc-groups');
+        const saveCcGroupsBtn = document.getElementById('save-cc-groups');
+
+        // --- VARIÁVEIS DE ESTADO ---
+        let htmlParaEnviar = null;
+        let dynamicRecipients = '';
+        let assuntoParaEnviar = '';
+        let fixedRecipients = new Set();
+        let tempFixedRecipients = new Set();
+        let allRecipientGroups = [];
+        let selectedCcGroups = new Set();
+
+        // --- INICIALIZAÇÃO ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Configuração inicial da UI
+            emailPreview.innerHTML = '<p class="loading-message p-10 text-slate-500">Selecione o tipo de relatório e clique em "Gerar Prévia".</p>';
+            loadDefaultRecipientsForCurrentType();
+            updateFixedRecipientsDisplay();
+
+            // Listeners principais
+            loadDataButton.addEventListener('click', carregarDadosIniciais);
+            sendButton.addEventListener('click', prepareSendConfirmation);
+            reportTypeRadios.forEach(radio => radio.addEventListener('change', handleReportTypeChange));
+            
+            // Listeners do Modal de Destinatários
+            manageRecipientsButton.addEventListener('click', openFixedRecipientsModal);
+            cancelEditRecipientsBtn.addEventListener('click', () => hideModal(fixedRecipientsModal));
+            saveRecipientsBtn.addEventListener('click', saveFixedRecipients);
+            addRecipientBtn.addEventListener('click', addRecipient);
+            addRecipientInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addRecipient(); } });
+            loadDefaultRecipientsBtn.addEventListener('click', () => {
+                loadDefaultRecipientsForCurrentType(true); // true para popular o modal temporário
+                renderRecipientTags();
+            });
+            
+            // Listeners do Modal CC
+            manageCcButton.addEventListener('click', openCcGroupsModal);
+            cancelCcGroupsBtn.addEventListener('click', () => hideModal(ccGroupsModal));
+            saveCcGroupsBtn.addEventListener('click', saveCcGroupsSelection);
+        });
+
+        // --- LÓGICA DOS MODAIS ---
+        const modal = {
+            overlay: document.getElementById('customModal'),
+            title: document.getElementById('modal-title'),
+            message: document.getElementById('modal-message'),
+            input: document.getElementById('modal-input'),
+            btnConfirm: document.getElementById('modal-btn-confirm'),
+            btnCancel: document.getElementById('modal-btn-cancel'),
+            _promiseResolver: null,
+            show: function() { showModal(this.overlay); },
+            hide: function() { hideModal(this.overlay); },
+            setup: function(type, title, message) {
+                this.title.textContent = title;
+                this.message.textContent = message;
+                this.input.style.display = (type === 'prompt') ? 'block' : 'none';
+                this.input.value = '';
+                this.btnCancel.style.display = (type === 'alert') ? 'none' : 'block';
+                this.btnConfirm.textContent = (type === 'alert') ? 'OK' : 'Confirmar';
+                this.show();
+                return new Promise(resolve => { this._promiseResolver = resolve; });
+            },
+            handleConfirm: function() {
+                if (this._promiseResolver) {
+                    const value = this.input.style.display === 'block' ? this.input.value : true;
+                    this._promiseResolver(value);
+                }
+                this.hide();
+            },
+            handleCancel: function() {
+                if (this._promiseResolver) {
+                    this._promiseResolver(this.input.style.display === 'block' ? null : false);
+                }
+                this.hide();
+            }
+        };
+        modal.btnConfirm.addEventListener('click', () => modal.handleConfirm());
+        modal.btnCancel.addEventListener('click', () => modal.handleCancel());
+        
+        function showModal(modalElement) {
+            modalBackdrop.classList.remove('hidden');
+            modalElement.classList.remove('hidden');
+            modalElement.classList.add('flex');
+        }
+
+        function hideModal(modalElement) {
+            modalBackdrop.classList.add('hidden');
+            modalElement.classList.add('hidden');
+            modalElement.classList.remove('flex');
+        }
+
+        function showConfirmModal(title, message) { return modal.setup('confirm', title, message); }
+        function showAlertModal(title, message) { return modal.setup('alert', title, message); }
+        function showPromptModal(title, message) { return modal.setup('prompt', title, message); }
+
+        // --- LÓGICA DA APLICAÇÃO ---
+        function handleReportTypeChange() {
+            const isAprovadas = document.querySelector('input[name="reportType"]:checked').value === 'aprovadas';
+            attachmentSection.style.display = isAprovadas ? 'block' : 'none';
+            if (!isAprovadas) attachmentInput.value = '';
+            loadDefaultRecipientsForCurrentType();
+            updateFixedRecipientsDisplay();
+            resetUIState();
+        }
+
+        function resetUIState() {
+            sendButton.disabled = true;
+            manageCcButton.disabled = true;
+            sendButton.textContent = 'Enviar Relatório';
+            sendButton.style.backgroundColor = '';
+            emailPreview.innerHTML = '<p class="loading-message p-10 text-slate-500">Tipo de relatório alterado. Clique em "Gerar Prévia" para atualizar.</p>';
+            logContainer.innerHTML = '<p class="loading-message text-slate-500">Aguardando dados...</p>';
+            ccGroupsDisplay.textContent = 'Nenhum grupo em cópia selecionado.';
+            htmlParaEnviar = null;
+            dynamicRecipients = '';
+            assuntoParaEnviar = '';
+            allRecipientGroups = [];
+            selectedCcGroups = new Set();
+        }
+
+        async function carregarDadosIniciais() {
+            sendButton.disabled = true;
+            loadDataButton.disabled = true;
+            manageCcButton.disabled = true;
+            loadDataButton.textContent = 'Carregando...';
+            emailPreview.innerHTML = '<p class="loading-message p-10 text-slate-500">Carregando dados e gerando prévia...</p>';
+            logContainer.innerHTML = '';
+            htmlParaEnviar = null;
+            dynamicRecipients = '';
+            assuntoParaEnviar = '';
+
+            try {
+                const reportType = document.querySelector('input[name="reportType"]:checked').value;
+                const urlParaBuscar = reportType === 'aprovadas' ? URL_APROVADAS : URL_PREVIA_COMITE;
+
+                const data = await fetchData(urlParaBuscar);
+                allRecipientGroups = data.destinatarios || [];
+                const mudancasCorrigidas = corrigirEEnriquecerMudancas(data.mudancas, allRecipientGroups);
+
+                const validationResult = validarDadosMudancas(mudancasCorrigidas);
+                if (!validationResult.valido) {
+                    exibirErro("Dados das Mudanças Inválidos", validationResult.erros.join('<br>'));
+                    return;
+                }
+                
+                // Pré-seleciona os grupos necessários
+                const requiredGroups = new Set(mudancasCorrigidas.map(m => m.cr9ff_grupodeatribuio).filter(Boolean));
+                selectedCcGroups = new Set(requiredGroups);
+                updateCcRecipients(); // Atualiza a lista de e-mails e a UI
+
+                const resultadoEmail = gerarHtmlDoEmail(mudancasCorrigidas, reportType);
+                htmlParaEnviar = resultadoEmail.html;
+                assuntoParaEnviar = resultadoEmail.subject;
+                
+                emailPreview.innerHTML = htmlParaEnviar;
+                sendButton.disabled = false;
+                manageCcButton.disabled = false;
+            } catch (error) {
+                exibirErro("Falha Crítica ao Carregar Dados", error.message);
+            } finally {
+                loadDataButton.disabled = false;
+                loadDataButton.textContent = 'Gerar Prévia';
+            }
+        }
+        
+        function corrigirEEnriquecerMudancas(mudancas, destinatarios) {
+            if (!mudancas || !destinatarios) return [];
+            const destinatariosMap = new Map(destinatarios.map(g => [g.cr9ff_grupodeatribuicao, g]));
+            return mudancas.map(mudanca => {
+                const nomeGrupo = mudanca.cr9ff_grupodeatribuio; 
+                if (nomeGrupo && destinatariosMap.has(nomeGrupo)) {
+                    const infoGrupo = destinatariosMap.get(nomeGrupo);
+                    mudanca.cr9ff_gerente = infoGrupo.cr9ff_gerente;
+                    mudanca.cr9ff_coordenador = infoGrupo.cr9ff_coordenador;
+                }
+                return mudanca;
+            });
+        }
+
+        async function prepareSendConfirmation() {
+            const isTest = testModeToggle.checked;
+            const toCount = fixedRecipients.size;
+            const ccCount = dynamicRecipients.split(';').filter(e => e).length;
+
+            if (isTest) {
+                const testEmails = await showPromptModal('Modo de Teste Ativo', 'Digite o(s) e-mail(s) de destino para o teste, separados por ponto e vírgula (;).');
+                if (testEmails) {
+                    executeSend(testEmails, ''); // Envia apenas para os e-mails de teste
+                } else {
+                    showAlertModal('Envio Cancelado', 'Nenhum e-mail de teste foi fornecido.');
+                }
+                return;
+            }
+
+            if (toCount === 0) {
+                showAlertModal('Envio Cancelado', 'É necessário adicionar ao menos um destinatário principal (Para). Use o botão "Gerenciar Destinatários".');
+                return;
+            }
+
+            const confirmado = await showConfirmModal('Confirmar Envio Oficial', `Você está prestes a enviar este comunicado para ${toCount} destinatário(s) em 'Para' e ${ccCount} em 'Cópia'. Confirma a ação?`);
+            if (confirmado) {
+                executeSend(Array.from(fixedRecipients).join(';'), dynamicRecipients);
+            }
+        }
+
+        async function executeSend(destinatariosPara, destinatariosCopia) {
+            const reportType = document.querySelector('input[name="reportType"]:checked').value;
+            let finalHtml = htmlParaEnviar;
+            let attachmentName = null;
+            let attachmentContent = null;
+
+            if (!htmlParaEnviar) {
+                await showAlertModal('Erro de Envio', 'Dados para envio não estão prontos. Por favor, gere a prévia primeiro.');
+                return;
+            }
+            
+            if (reportType === 'previa') {
+                const teamsUrl = await showPromptModal('URL da Reunião', 'Por favor, insira a URL da reunião do Microsoft Teams:');
+                if (!teamsUrl || !teamsUrl.trim().startsWith("https://teams.microsoft.com")) {
+                    await showAlertModal('Envio Cancelado', 'URL do Teams inválida ou não fornecida. O envio foi cancelado.');
+                    return;
+                }
+                finalHtml = htmlParaEnviar.replace('%%TEAMS_BUTTON%%', gerarBotaoTeams(teamsUrl));
+            } else { // 'aprovadas'
+                if (attachmentInput.files.length > 0) {
+                    const file = attachmentInput.files[0];
+                    if (!file.name.toLowerCase().endsWith('.csv')) {
+                        await showAlertModal('Arquivo Inválido', 'O arquivo de anexo deve ter a extensão .csv. Selecione novamente.');
+                        return;
+                    }
+                    attachmentName = file.name;
+                    attachmentContent = await lerArquivoComoBase64(file); 
+                }
+                finalHtml = finalHtml.replace('%%TEAMS_BUTTON%%', '');
+            }
+
+            sendButton.disabled = true;
+            sendButton.textContent = 'Enviando...';
+            
+            const payload = {
+                htmlParaEnviar: finalHtml,
+                destinatariosFixos: destinatariosPara,
+                destinatariosDinamicos: destinatariosCopia,
+                attachmentName: attachmentName,
+                attachmentContent: attachmentContent,
+                assuntoParaEnviar: assuntoParaEnviar
+            };
+
+            try {
+                const response = await fetch(urlFluxoB_Envio, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error(`Falha no envio: ${response.statusText}`);
+                sendButton.textContent = 'Enviado com Sucesso!';
+                sendButton.style.backgroundColor = 'var(--color-success)';
+                await showAlertModal('Sucesso!', 'Relatório enviado com sucesso!');
+            } catch (error) {
+                await showAlertModal('Erro no Envio', `Ocorreu um erro: ${error.message}`);
+                sendButton.disabled = false;
+                sendButton.textContent = 'Enviar Relatório';
+            }
+        }
+
+        function lerArquivoComoBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const dataUrl = reader.result;
+                        const base64Content = dataUrl.split(',')[1];
+                        if (base64Content) resolve(base64Content);
+                        else reject(new Error("Falha ao extrair o conteúdo Base64 do arquivo."));
+                    } catch (error) { reject(error); }
+                };
+                reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function validarDadosMudancas(mudancas) {
+            const erros = [];
+            if (!mudancas || !Array.isArray(mudancas) || mudancas.length === 0) {
+                erros.push("Nenhuma mudança foi encontrada para processar.");
+                return { valido: false, erros };
+            }
+            mudancas.forEach((m, index) => {
+                if (!m) {
+                    erros.push(`Item de mudança inválido (nulo) encontrado na posição ${index + 1}.`);
+                    return;
+                }
+                const numeroMudanca = `'${m.cr9ff_nmero || `posição ${index + 1}`}'`;
+                if (!m.cr9ff_grupodeatribuio || !m.cr9ff_grupodeatribuio.trim()) erros.push(`A mudança ${numeroMudanca} não possui um 'Grupo de Atribuição' válido.`);
+                if (!m.cr9ff_coordenador || !m.cr9ff_coordenador.trim()) erros.push(`A mudança ${numeroMudanca} não possui um 'Coordenador' válido.`);
+                if (!m.cr9ff_gerente || !m.cr9ff_gerente.trim()) erros.push(`A mudança ${numeroMudanca} não possui um 'Gerente' válido.`);
+                if (!m.cr9ff_descrioresumida || !m.cr9ff_descrioresumida.trim()) erros.push(`A mudança ${numeroMudanca} não possui uma 'Descrição Resumida' válida.`);
+            });
+            return { valido: erros.length === 0, erros };
+        }
+
+        // --- LÓGICA DE GERENCIAMENTO DE DESTINATÁRIOS ---
+        function openFixedRecipientsModal() {
+            tempFixedRecipients = new Set(fixedRecipients);
+            renderRecipientTags();
+            showModal(fixedRecipientsModal);
+            addRecipientInput.focus();
+        }
+
+        function renderRecipientTags() {
+            recipientTagsContainer.innerHTML = '';
+            if (tempFixedRecipients.size === 0) {
+                recipientTagsContainer.innerHTML = `<p class="text-gray-500 text-center p-4">Nenhum e-mail adicionado.</p>`;
+            } else {
+                tempFixedRecipients.forEach(email => createRecipientTag(email));
+            }
+        }
+
+        function createRecipientTag(email) {
+            const tag = document.createElement('div');
+            tag.className = 'recipient-tag';
+            tag.innerHTML = `<span>${email}</span><button type="button" title="Remover">&times;</button>`;
+            tag.querySelector('button').addEventListener('click', () => {
+                tempFixedRecipients.delete(email);
+                renderRecipientTags();
+            });
+            if(recipientTagsContainer.querySelector('p')) {
+                recipientTagsContainer.innerHTML = '';
+            }
+            recipientTagsContainer.appendChild(tag);
+        }
+
+        function addRecipient() {
+            const email = addRecipientInput.value.trim();
+            recipientErrorMessage.textContent = '';
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                recipientErrorMessage.textContent = 'Formato de e-mail inválido.';
+                return;
+            }
+            if (tempFixedRecipients.has(email)) {
+                recipientErrorMessage.textContent = 'Este e-mail já foi adicionado.';
+                return;
+            }
+            tempFixedRecipients.add(email);
+            createRecipientTag(email);
+            addRecipientInput.value = '';
+            addRecipientInput.focus();
+        }
+
+        function saveFixedRecipients() {
+            fixedRecipients = new Set(tempFixedRecipients);
+            updateFixedRecipientsDisplay();
+            hideModal(fixedRecipientsModal);
+        }
+
+        function updateFixedRecipientsDisplay() {
+            if (fixedRecipients.size === 0) {
+                fixedRecipientsDisplay.textContent = 'Nenhum destinatário fixo definido.';
+            } else {
+                fixedRecipientsDisplay.textContent = `${fixedRecipients.size} destinatário(s) fixo(s) definido(s).`;
+            }
+        }
+        
+        function cleanEmailString(emailString) {
+            if (!emailString || typeof emailString !== 'string') return new Set();
+            const emailArray = emailString.split(/[;]/)
+                .map(entry => {
+                    const match = entry.match(/<([^>]+)>/);
+                    return match ? match[1].trim().toLowerCase() : entry.trim().toLowerCase();
+                })
+                .filter(email => email && email.includes('@'));
+            return new Set(emailArray);
+        }
+
+        function loadDefaultRecipientsForCurrentType(isTemp = false) {
+            const reportType = document.querySelector('input[name="reportType"]:checked').value;
+            const defaultList = reportType === 'aprovadas' ? EMAILS_FIXOS_APROVADAS : EMAILS_FIXOS_PREVIA;
+            const emailSet = cleanEmailString(defaultList);
+            if (isTemp) {
+                tempFixedRecipients = emailSet;
+            } else {
+                fixedRecipients = emailSet;
+            }
+        }
+
+        // --- LÓGICA DE GERENCIAMENTO DE GRUPOS CC ---
+        function openCcGroupsModal() {
+            ccGroupsContainer.innerHTML = '';
+            if (allRecipientGroups.length === 0) {
+                ccGroupsContainer.innerHTML = '<p class="text-slate-500">Nenhum grupo de destinatário disponível.</p>';
+            } else {
+                allRecipientGroups.forEach(group => {
+                    const groupName = group.cr9ff_grupodeatribuicao;
+                    if (!groupName) return;
+
+                    const isChecked = selectedCcGroups.has(groupName);
+                    const checkboxId = `cc-group-${groupName.replace(/\s/g, '-')}`;
+                    
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center';
+                    div.innerHTML = `
+                        <input id="${checkboxId}" type="checkbox" value="${groupName}" ${isChecked ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <label for="${checkboxId}" class="ml-3 block text-sm font-medium text-gray-700">${groupName}</label>
+                    `;
+                    ccGroupsContainer.appendChild(div);
+                });
+            }
+            showModal(ccGroupsModal);
+        }
+
+        function saveCcGroupsSelection() {
+            const newSelectedGroups = new Set();
+            ccGroupsContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
+                newSelectedGroups.add(checkbox.value);
+            });
+            selectedCcGroups = newSelectedGroups;
+            updateCcRecipients();
+            hideModal(ccGroupsModal);
+        }
+
+        function updateCcRecipients() {
+            const emailsDinamicosSet = new Set();
+            const mapaDeDestinatarios = new Map(allRecipientGroups.map(g => [g.cr9ff_grupodeatribuicao, g.cr9ff_destinatarios]));
+            
+            logContainer.innerHTML = '';
+            if (selectedCcGroups.size === 0) {
+                logContainer.innerHTML = '<p class="loading-message text-slate-500">Nenhum grupo selecionado.</p>';
+            }
+
+            selectedCcGroups.forEach(groupName => {
+                const emailsDoGrupoStr = mapaDeDestinatarios.get(groupName);
+                const temEmailsValidos = typeof emailsDoGrupoStr === 'string' && emailsDoGrupoStr.trim() !== '';
+                
+                const grupoDiv = document.createElement('div');
+                grupoDiv.className = 'log-group';
+                const emailsP = document.createElement('p');
+                emailsP.textContent = temEmailsValidos ? emailsDoGrupoStr : 'ERRO: Nenhum destinatário cadastrado.';
+                if (!temEmailsValidos) emailsP.style.color = 'var(--color-error)';
+                grupoDiv.innerHTML = `<h4>${groupName}</h4>`;
+                grupoDiv.appendChild(emailsP);
+                logContainer.appendChild(grupoDiv);
+
+                if (temEmailsValidos) {
+                    emailsDoGrupoStr.split(';').map(e => e.trim().toLowerCase()).filter(e => e).forEach(email => {
+                        emailsDinamicosSet.add(email);
+                    });
+                }
+            });
+
+            dynamicRecipients = Array.from(emailsDinamicosSet).join(';');
+            ccGroupsDisplay.textContent = `${selectedCcGroups.size} grupo(s) em cópia selecionado(s).`;
+        }
+
+        // --- LÓGICA DE GERAÇÃO DE HTML ---
+        function gerarHtmlDoEmail(listaDeMudancas, reportType) {
+            const gestores = {};
+            listaDeMudancas.forEach(change => {
+                if (!change) return;
+                const nomeGerente = change.cr9ff_gerente || "Gerente não especificado";
+                if (!gestores[nomeGerente]) gestores[nomeGerente] = { nome: nomeGerente, mudancas: [] };
+                gestores[nomeGerente].mudancas.push(change);
+            });
+
+            const dataFormatada = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const saudacao = getGreeting();
+
+            let conteudoVariavelHtml = '', textoIntro = '', headerImageUrl = '', textoAssunto = '';
+            
+            const observacaoText = observacoesAdicionaisInput.value.trim();
+            let observacaoHtml = '';
+            if (observacaoText) {
+                const formattedText = observacaoText.replace(/\n/g, '<br>');
+                observacaoHtml = `
+                    <tr>
+                        <td style="padding-top: 25px; padding-bottom: 10px;">
+                            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td style="padding: 12px 16px; background-color: #F8F8F8; border-left: 4px solid #1976D2; border-radius: 4px;">
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 13px; color: #2C2C2C; line-height: 1.5;">
+                                            <strong style="color: #555555;">Observações Adicionais:</strong><br>
+                                            ${formattedText}
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>`;
+            }
+
+            const kpi = {
+                totalMudancas: listaDeMudancas.length,
+                totalGerentes: Object.keys(gestores).length,
+                totalCriticas: listaDeMudancas.filter(m => m.cr9ff_prioridade && m.cr9ff_prioridade.startsWith('1')).length
+            };
+
+            if (reportType === 'aprovadas') {
+                textoIntro = `Seguem abaixo as mudanças submetidas e aprovadas na reunião do Comitê de Mudanças (CAB). Realizada em ${dataFormatada}.`;
+                headerImageUrl = 'https://i.postimg.cc/RFfTHs8X/Capas-E-mails-3.png';
+                textoAssunto = 'Relatório de Mudanças Aprovadas';
+
+                conteudoVariavelHtml = `
+                    <tr>
+                        <td style="padding-bottom: 30px;">
+                            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td align="center" width="33.33%" style="padding: 0 10px;">
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 28px; color: #A0A0A0; font-weight: 700;">${kpi.totalMudancas}</p>
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 12px; color: #777777; text-transform: uppercase; letter-spacing: 0.5px;">Total de Mudanças</p>
+                                    </td>
+                                    <td align="center" width="33.33%" style="padding: 0 10px; border-left: 1px solid #D1D1D1; border-right: 1px solid #D1D1D1;">
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 28px; color: #A0A0A0; font-weight: 700;">${kpi.totalGerentes}</p>
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 12px; color: #777777; text-transform: uppercase; letter-spacing: 0.5px;">Gerentes Envolvidos</p>
+                                    </td>
+                                    <td align="center" width="33.33%" style="padding: 0 10px;">
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 28px; color: #D32F2F; font-weight: 700;">${kpi.totalCriticas}</p>
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 12px; color: #777777; text-transform: uppercase; letter-spacing: 0.5px;">Prioridade Crítica</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr><td style="border-top: 1px solid #D1D1D1;"></td></tr>`;
+            } else { // previa
+                textoIntro = `Para sua ciência e preparação, seguem as mudanças que serão submetidas para análise e aprovação na próxima reunião do Comitê de Mudanças (CAB).`;
+                headerImageUrl = 'https://i.ibb.co/Sw6q9hnD/Capas-E-mails-6.png';
+                textoAssunto = 'Prévia do Comitê de Mudanças';
+                conteudoVariavelHtml = `
+                    <tr><td style="padding-bottom: 25px; text-align: center;">%%TEAMS_BUTTON%%</td></tr>
+                    <tr>
+                        <td style="padding-bottom: 30px;">
+                            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td align="center" width="50%" style="padding: 0 10px; border-right: 1px solid #D1D1D1;">
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 28px; color: #A0A0A0; font-weight: 700;">${kpi.totalMudancas}</p>
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 12px; color: #777777; text-transform: uppercase; letter-spacing: 0.5px;">Total de Mudanças</p>
+                                    </td>
+                                    <td align="center" width="50%" style="padding: 0 10px;">
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 28px; color: #A0A0A0; font-weight: 700;">${kpi.totalGerentes}</p>
+                                        <p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 12px; color: #777777; text-transform: uppercase; letter-spacing: 0.5px;">Gerentes Envolvidos</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr><td style="border-top: 1px solid #D1D1D1;"></td></tr>`;
+            }
+
+            let cardsHtml = '';
+            Object.values(gestores).sort((a, b) => a.nome.localeCompare(b.nome)).forEach(gerente => {
+                cardsHtml += `<tr><td style="padding: 16px 0 8px 0; background-color: #FFFFFF; border-bottom: 1px solid #D1D1D1;"><h2 style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 18px; color: #2C2C2C; font-weight: 700;">${gerente.nome}</h2></td></tr>`;
+                gerente.mudancas.sort((a, b) => (a.cr9ff_nmero || '').localeCompare(b.cr9ff_nmero || '')).forEach(m => {
+                    const prioridade = getPriorityStyle(m.cr9ff_prioridade);
+                    cardsHtml += `<tr><td style="padding: 16px 0 0 0;"><table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border: 1px solid #D1D1D1; border-top: 4px solid ${prioridade.borderColor}; border-radius: 6px;"><tr><td style="padding: 16px 20px;"><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td colspan="2" style="padding-bottom: 12px; border-bottom: 1px solid #D1D1D1;"><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td valign="top"><p style="margin: 0 0 4px 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 13px; color: #777777;">${m.cr9ff_nmero || 'N/A'}</p><h3 style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 16px; color: #5A5A5A; font-weight: 700; line-height: 1.4;">${m.cr9ff_descrioresumida || 'Descrição não disponível'}</h3></td><td width="100" align="right" valign="top"><span style="display: inline-block; padding: 4px 10px; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 11px; font-weight: 600; color: ${prioridade.tagColor}; border: 1px solid ${prioridade.borderColor}; border-radius: 4px; text-transform: uppercase;">${prioridade.text}</span></td></tr></table></td></tr><tr><td colspan="2" height="16" style="font-size:16px; line-height:16px;">&nbsp;</td></tr><tr><td width="50%" valign="top" style="padding-right: 12px; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 13px; color: #2C2C2C; line-height: 1.5;"><strong style="color: #555555;">Período Planejado:</strong><br>${m['cr9ff_datadeincioplanejada@OData.Community.Display.V1.FormattedValue'] || 'N/A'} a<br>${m['cr9ff_datadetrminoplanejada@OData.Community.Display.V1.FormattedValue'] || 'N/A'}<br><br><strong style="color: #555555;">Item de Configuração:</strong><br>${m.cr9ff_itemdeconfigurao || 'N/A'}</td><td width="50%" valign="top" style="padding-left: 12px; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 13px; color: #2C2C2C; line-height: 1.5;"><strong style="color: #555555;">Coordenador:</strong><br>${m.cr9ff_coordenador || 'N/A'}<br><br><strong style="color: #555555;">Tipo / Categoria:</strong><br>${m.cr9ff_tipo || 'N/A'} / ${m.cr9ff_categoria || 'N/A'}</td></tr><tr><td colspan="2" height="16" style="font-size:16px; line-height:16px;">&nbsp;</td></tr><tr><td colspan="2" style="background-color: #F8F8F8; border-left: 4px solid ${prioridade.borderColor}; padding: 12px 16px; border-radius: 4px;"><p style="margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; font-size: 13px; color: #2C2C2C; line-height: 1.5;"><strong style="color: #555555;">Análise de Risco e Impacto:</strong><br>${m.cr9ff_anlisederiscoeimpacto || 'Não informada.'}</p></td></tr></table></td></tr></table></td></tr>`;
+                });
+            });
+
+            const corpoHtml = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Relatório de Mudanças</title><style>body{margin:0;padding:0;background-color:#F8F8F8;-webkit-font-smoothing:antialiased;}table{border-collapse:collapse;} p, li, h2, h3 { font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; } </style></head><body><table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #F8F8F8;"><tr><td align="center" style="padding: 12px;"><table width="600" border="0" cellspacing="0" cellpadding="0" align="center" style="width:100%;max-width:600px;background-color:#FFFFFF;border-radius:6px;"><tr><td><img alt="Cabeçalho Comitê de Mudanças" src="${headerImageUrl}" width="600" style="width:100%;max-width:600px;display:block;border-top-left-radius:6px;border-top-right-radius:6px;"></td></tr><tr><td style="padding: 32px;"><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td style="font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif;font-size:15px;color:#2C2C2C;line-height:1.6;padding-bottom:20px;">${saudacao},<br><br>${textoIntro}</td></tr>${observacaoHtml}${conteudoVariavelHtml}</table><table width="100%" border="0" cellspacing="0" cellpadding="0">${cardsHtml}</table></td></tr><tr><td style="background-color:#F0F0F0;text-align:center;padding:16px 20px;border-bottom-left-radius:6px;border-bottom-right-radius:6px;"><p style="font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif;font-size:11px;color:#777777;margin:0;">Este é um e-mail gerado automaticamente.</p></td></tr></table></td></tr></table></body></html>`;
+            return { html: corpoHtml, subject: textoAssunto };
+        }
+
+        function gerarBotaoTeams(url) {
+            return `<table border="0" cellspacing="0" cellpadding="0" align="center"><tr><td align="center" style="background-color:#464EB8;border-radius:4px;"><a href="${url}" target="_blank" style="padding:12px 25px;font-family:'Segoe UI',Arial,sans-serif;font-size:16px;color:#ffffff;text-decoration:none;display:inline-block;font-weight:600;">Acessar Reunião do Teams</a></td></tr></table>`;
+        }
+
+        function getPriorityStyle(priorityText) {
+            const p = (priorityText || '4').charAt(0);
+            const styleMap = {
+                '1': { text: 'Crítica', borderColor: '#D32F2F', tagColor: '#D32F2F' },
+                '2': { text: 'Alta', borderColor: '#FB8C00', tagColor: '#FB8C00' },
+                '3': { text: 'Moderada', borderColor: '#1976D2', tagColor: '#1976D2' },
+                'default': { text: 'Baixa', borderColor: '#388E3C', tagColor: '#388E3C' }
+            };
+            return styleMap[p] || styleMap['default'];
+        }
+
+        function getGreeting() {
+            const hour = new Date().getHours();
+            if (hour >= 5 && hour < 12) return "Bom dia";
+            if (hour >= 12 && hour < 18) return "Boa tarde";
+            return "Boa noite";
+        }
+
+        function exibirErro(titulo, mensagem) {
+            const errorHtml = `<div class="status-message border-red-500 bg-red-50 text-red-700"><strong class="font-bold block text-center text-lg mb-2">${titulo}</strong><p class="text-sm">${mensagem}</p></div>`;
+            logContainer.innerHTML = '';
+            emailPreview.innerHTML = errorHtml;
+            sendButton.disabled = true;
+        }
+
+        async function fetchData(url) {
+            const response = await fetch(url, { method: 'POST' });
+            if (!response.ok) throw new Error(`A chamada de rede falhou com o status: ${response.statusText}`);
+            return response.json();
+        }
+    </script>
+</body>
+</html>
