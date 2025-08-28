@@ -1,0 +1,1645 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de Comunicados</title>
+    <!-- Inclusão do Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Biblioteca para gerar XLSX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- Fontes -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            --color-border: #e5e7eb; /* gray-200 */
+            --color-bg-panel: #ffffff; /* white */
+            --color-bg-page: #f9fafb;  /* gray-50 */
+            --color-accent: #2563eb;   /* blue-600 */
+            --color-accent-hover: #1d4ed8; /* blue-700 */
+        }
+        .selected-card {
+            box-shadow: 0 0 0 2px var(--color-accent);
+            border-color: var(--color-accent);
+        }
+        .control-panel::-webkit-scrollbar, .preview-area::-webkit-scrollbar, #fixed-recipients-textarea::-webkit-scrollbar {
+            display: none;
+        }
+        .control-panel, .preview-area, #fixed-recipients-textarea {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        #email-preview-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 0.5rem; /* rounded-lg */
+            background-color: white;
+        }
+        /* Estilos para a barra de ferramentas de formatação */
+        .toolbar-button {
+            width: 2.25rem; /* w-9 */
+            height: 2.25rem; /* h-9 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid transparent;
+            border-radius: 0.375rem; /* rounded-md */
+            transition: background-color 0.2s, border-color 0.2s;
+            color: #d1d5db; /* gray-300 */
+            background-color: #1f2937; /* bg-gray-800 */
+        }
+        .toolbar-button:hover {
+            background-color: #374151; /* bg-gray-700 */
+        }
+        .toolbar-button.active {
+            background-color: var(--color-accent);
+            color: white;
+        }
+        .recipient-tag {
+            background-color: #e0e7ff; /* indigo-100 */
+            color: #3730a3; /* indigo-800 */
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px; /* rounded-full */
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.875rem; /* text-sm */
+            font-weight: 500;
+            margin: 0.25rem;
+        }
+        .recipient-tag button {
+            margin-left: 0.5rem;
+            color: #4338ca; /* indigo-700 */
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        .recipient-tag button:hover {
+            color: #312e81; /* indigo-900 */
+        }
+        /* --- Estilos para imagens redimensionáveis no iframe --- */
+        .resizable-img-wrapper {
+          display: inline-block; /* Changed from block to inline-block */
+          position: relative; /* Needed for absolute positioning of handles if added */
+          resize: both;
+          overflow: auto;
+          border: 1px dashed #cbd5e1; /* slate-300 */
+          border-radius: 4px;
+          padding: 4px;
+          max-width: 100%;
+        }
+        .resizable-img-wrapper > img {
+          display: block;
+          width: 100%;
+          height: auto;
+        }
+        .resizable-img-wrapper:focus-within {
+          outline: 2px solid #2563eb33; /* A subtle glow */
+          border-color: var(--color-accent);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="flex h-screen bg-[var(--color-bg-page)]">
+        
+        <!-- PAINEL DE CONTROLE (ESQUERDA) -->
+        <aside class="control-panel w-full md:w-2/5 lg:w-1/3 h-screen flex flex-col bg-[var(--color-bg-panel)] border-r border-[var(--color-border)] p-6 overflow-y-auto">
+            
+            <header class="mb-6">
+                <h1 class="text-2xl font-bold text-gray-900">Editor de Comunicados</h1>
+                <p class="mt-1 text-sm text-gray-600">Selecione, edite e envie seu comunicado via Power Automate.</p>
+            </header>
+
+            <!-- Passo 1: Seleção de Template -->
+            <section class="mb-6">
+                <h2 class="text-lg font-semibold text-gray-700 mb-3">1. Escolha um Template</h2>
+                <div id="template-cards-container" class="grid grid-cols-1 gap-3">
+                    <!-- Cards de Template serão inseridos aqui pelo JS -->
+                </div>
+            </section>
+
+            <!-- Passo 2: Editor de Conteúdo (Simplificado) -->
+            <section id="editor-section" class="flex-grow flex flex-col hidden">
+                <h2 class="text-lg font-semibold text-gray-700 mb-3">2. Edite o Assunto</h2>
+                <div class="mb-4">
+                    <label for="email-subject" class="block text-sm font-medium text-gray-700 mb-1">Assunto do E-mail</label>
+                    <input type="text" id="email-subject" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition">
+                </div>
+
+                <!-- Opções específicas do template -->
+                <div id="template-options-panel" class="hidden">
+                    <h2 class="text-lg font-semibold text-gray-700 mb-3 mt-4">3. Opções do Comunicado</h2>
+                    <div class="space-y-2 rounded-md bg-gray-50 p-4 border">
+                        <label for="toggle-reduz-ai" class="flex items-center cursor-pointer">
+                            <input type="checkbox" id="toggle-reduz-ai" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            <span class="ml-2 text-sm text-gray-700">Incluir selo "Reduz Aí"</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Seção de Destinatários e Anexos -->
+                <div id="recipients-panel" class="mt-4">
+                    <h2 class="text-lg font-semibold text-gray-700 mb-3">4. Destinatários e Anexos</h2>
+                    <div class="rounded-md bg-gray-50 p-4 border">
+                        <button id="manage-recipients-button" class="w-full mb-2 bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-700 transition-colors duration-300">Gerenciar Destinatários Fixos</button>
+                        
+                        <div id="fixed-recipients-display" class="mt-2 text-sm text-gray-700">Nenhum destinatário fixo carregado.</div>
+
+                        <button id="add-cc-button" class="w-full my-4 bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors duration-300" disabled>Adicionar Destinatários em Cópia (Cc)</button>
+                        
+                        <div id="cc-recipients-log" class="w-full text-xs text-gray-600"></div>
+                        
+                        <!-- Botão para Inserir Imagem -->
+                        <label for="insert-image-input" class="w-full mt-4 bg-teal-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-teal-700 transition-colors duration-300 cursor-pointer text-center block">
+                            Inserir Imagem
+                        </label>
+                        <input type="file" id="insert-image-input" class="hidden" accept="image/*">
+                        
+                        <div id="attachment-section">
+                            <label for="attachment-input" class="block text-sm font-medium text-gray-700 mt-4">Anexar Arquivo (Opcional)</label>
+                            <input type="file" id="attachment-input" class="mt-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                        </div>
+                         <div id="auto-attachment-section" class="hidden mt-4 text-sm">
+                            <p class="font-medium text-gray-700">Anexo Automático:</p>
+                            <div class="mt-1 flex items-center gap-2 text-green-700 bg-green-50 p-2 rounded-md border border-green-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                                <span id="auto-attachment-filename" class="font-semibold"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                 <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p class="text-sm text-blue-800">
+                        <strong class="font-semibold">Dica:</strong> Para editar, clique no texto na área de visualização. Para formatar, selecione o texto. Para adicionar imagens, use o botão "Inserir Imagem" ou arraste e cole.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Passo 5: Envio -->
+            <section id="send-section" class="mt-6 hidden">
+                <h2 class="text-lg font-semibold text-gray-700 mb-3">5. Enviar Comunicado</h2>
+                <div class="rounded-md bg-gray-50 p-4 border">
+                    <label for="test-mode-toggle" class="flex items-center cursor-pointer">
+                        <input type="checkbox" id="test-mode-toggle" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span class="ml-2 text-sm font-semibold text-gray-700">Ativar Modo de Teste</span>
+                    </label>
+                </div>
+                
+                <input type="hidden" id="power-automate-url" value="https://prod-76.westus.logic.azure.com:443/workflows/416859d347cd42e9bdae001d2f3caf04/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=gLZgIP7uqIjB0SYJlDCgLezyn_xpHr_prU_9roVsSgw">
+
+                <div class="flex items-center gap-4 mt-4">
+                    <button id="send-button" class="w-full bg-[var(--color-accent)] text-white font-bold py-2.5 px-4 rounded-lg hover:bg-[var(--color-accent-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-300 disabled:bg-gray-400">
+                        Enviar Comunicado
+                    </button>
+                </div>
+                <div id="status-message" class="mt-3 text-sm font-medium text-center"></div>
+            </section>
+        </aside>
+
+        <!-- ÁREA DE PRÉ-VISUALIZAÇÃO (DIREITA) -->
+        <main class="preview-area flex-grow h-screen p-6 overflow-y-auto flex items-center justify-center">
+             <div class="w-full h-full max-w-3xl mx-auto shadow-lg relative">
+                 <iframe id="email-preview-frame"></iframe>
+             </div>
+        </main>
+    </div>
+    
+    <!-- Mini Toolbar para Edição de Texto -->
+    <div id="text-format-toolbar" class="absolute hidden bg-gray-900 rounded-lg shadow-xl p-1 flex items-center gap-1 z-50 transition-opacity duration-150">
+        <button data-command="bold" class="toolbar-button" title="Negrito"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z"/></svg></button>
+        <button data-command="italic" class="toolbar-button" title="Itálico"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4v3h2.21l-3.42 8H6v3h8v-3h-2.21l3.42-8H18V4z"/></svg></button>
+        <button data-command="underline" class="toolbar-button" title="Sublinhado"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zm-7 2v2h14v-2H5z"/></svg></button>
+        <button data-command="strikeThrough" class="toolbar-button" title="Tachado"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z"/></svg></button>
+        <div class="w-px h-5 bg-gray-600 mx-1"></div>
+        <button data-command="hiliteColor" class="toolbar-button" title="Realçar"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="m14.06 9.94 3.75 3.75L11.06 20H7v-4.06l7.06-7.06zm.94-2.82-2.12-2.12 2.12-2.12 2.12 2.12-2.12 2.12zM3 21.5h18v-2H3v2z"/></svg></button>
+        <div class="w-px h-5 bg-gray-600 mx-1"></div>
+        <button data-command="insertUnorderedList" class="toolbar-button" title="Lista (Marcadores)"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/></svg></button>
+        <button data-command="insertOrderedList" class="toolbar-button" title="Lista (Números)"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 11.9v-.9H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z"/></svg></button>
+    </div>
+
+    <!-- Modal para e-mail de teste -->
+    <div id="test-email-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 class="text-lg font-bold text-gray-900">Enviar E-mail de Teste</h3>
+            <p class="text-sm text-gray-600 mt-2">Digite o(s) e-mail(s) de destino para este teste, separados por vírgula.</p>
+            <input type="text" id="test-email-input" class="w-full p-2 border border-gray-300 rounded-md mt-4" placeholder="email1@exemplo.com, email2@exemplo.com">
+            <div class="mt-6 flex justify-end gap-3">
+                <button id="cancel-test-email" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button id="confirm-test-email" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Enviar Teste</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal para Destinatários Dinâmicos (Cc) -->
+    <div id="cc-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
+            <h3 class="text-lg font-bold text-gray-900">Adicionar Destinatários em Cópia (Cc)</h3>
+            <div class="mt-4 space-y-4">
+                <div>
+                    <input type="radio" id="cc-option-all" name="cc-option" value="all" checked class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                    <label for="cc-option-all" class="ml-2 text-sm text-gray-700">Incluir Todos os Grupos</label>
+                </div>
+                <div>
+                    <input type="radio" id="cc-option-select" name="cc-option" value="select" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                    <label for="cc-option-select" class="ml-2 text-sm text-gray-700">Selecionar Grupos Específicos</label>
+                </div>
+                <div id="cc-groups-container" class="hidden mt-4 p-3 border rounded-md max-h-48 overflow-y-auto space-y-2">
+                    <!-- Checkboxes dos grupos serão inseridos aqui -->
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-3">
+                <button id="cancel-cc" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button id="confirm-cc" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação de Envio -->
+    <div id="confirm-send-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 id="confirm-send-title" class="text-lg font-bold text-gray-900">Confirmar Envio</h3>
+            <p id="confirm-send-message" class="text-sm text-gray-600 mt-2">Você tem certeza que deseja enviar este comunicado?</p>
+            <div class="mt-6 flex justify-end gap-3">
+                <button id="cancel-send-btn" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button id="confirm-send-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Gerenciar Destinatários Fixos -->
+    <div id="fixed-recipients-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
+            <h3 class="text-lg font-bold text-gray-900">Gerenciar Destinatários Fixos (Para)</h3>
+            <p class="text-sm text-gray-600 mt-2">Adicione, remova ou carregue a lista padrão de e-mails.</p>
+            
+            <div class="mt-4 p-3 border rounded-md min-h-[128px] max-h-64 overflow-y-auto bg-gray-50" id="recipient-tags-container">
+                <!-- Tags de e-mail serão inseridas aqui -->
+            </div>
+
+            <div class="mt-4">
+                <label for="add-recipient-input" class="block text-sm font-medium text-gray-700">Adicionar novo e-mail</label>
+                <div class="mt-1 flex gap-2">
+                    <input type="email" id="add-recipient-input" class="flex-grow p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="nome@exemplo.com">
+                    <button id="add-recipient-btn" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700">Adicionar</button>
+                </div>
+                <p id="recipient-error-message" class="text-red-600 text-sm mt-1 h-4"></p>
+            </div>
+
+            <div class="mt-6 flex justify-between items-center">
+                <button id="load-default-recipients-btn" class="text-sm text-blue-600 hover:underline">Carregar lista padrão</button>
+                <div class="flex gap-3">
+                    <button id="cancel-edit-recipients" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">Cancelar</button>
+                    <button id="save-recipients-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- URLs DAS APIs ---
+            const URL_VISAO_TEMPORAL = 'https://prod-51.westus.logic.azure.com:443/workflows/1371f4c89025411fac91fb7b8dd6ee79/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=av8QuAIlYgiRMQNisCFFfqQnozZmAMoxZqchPvE5JaM';
+            const URL_APROVADAS = 'https://prod-128.westus.logic.azure.com:443/workflows/68f5fe80ae2442d4b53fac09e49bd949/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=zUqYbIMukdgoXCKNItXtAekGJbCCmmjMd9sLhTkXnNg';
+
+            const mockData = {
+                'PRB0041442': {
+                    subject: "Problema Resolvido ✅ - Serviço MGV | PRB0041442",
+                    resumo: "O problema <strong>PRB0041442</strong>, que causou paralisação nas cargas de balança devido a erro de memória no servidor do MGV, foi encerrado com sucesso.",
+                    kpi1_valor: "147",
+                    kpi1_texto: "Incidentes Gerados",
+                    kpi2_valor: "+1 HORA",
+                    kpi2_texto: "DE DEGRADAÇÃO NO SERVIÇO",
+                    rca: `
+                        <li style="padding-bottom: 8px;"><strong>Acúmulo de Logs:</strong> Arquivos de logs com mais de 10 anos (>10GB) sem rotina de limpeza causaram o consumo excessivo de memória.</li>
+                        <li><strong>Deficiência da Aplicação:</strong> A versão atual da aplicação consome memória progressivamente até esgotar os recursos do servidor, sem um gerenciamento automático.</li>
+                    `,
+                    plano_acao: `
+                        <li style="padding-bottom: 8px;"><strong>Corretiva:</strong> Limpeza das tabelas de log (tblogaplicacao, etc.) e implementação de um job para reinício diário do serviço.</li>
+                        <li style="padding-bottom: 8px;"><strong>Preventiva:</strong> Atualização da aplicação para a versão mais recente (7.0.175.13), que inclui melhor gerenciamento de memória.</li>
+                        <li><strong>Projeto Associado:</strong> A atualização completa será tratada no projeto ART-1032.</li>
+                    `,
+                    resultado_negocio: "A estabilização do serviço MGV normaliza o fluxo de cargas e garante a integridade dos dados de pesagem, evitando impactos na operação."
+                }
+            };
+
+            const templates = {
+                // ===================================================================================
+                // TEMPLATE INTEGRADO: RELATÓRIO DE BACKLOG DE CHAMADOS
+                // ===================================================================================
+                'relatorio-backlog': {
+                    id: 'relatorio-backlog',
+                    title: "Relatório - Backlog de Chamados",
+                    description: "Visão analítica do backlog, com foco nos chamados críticos (Incidentes e Requisições).",
+                    bannerUrl: "https://i.ibb.co/fhjvrPM/Capas-E-mails-5.png",
+                    emailTitle: "Visão Geral do Backlog de Chamados",
+                    subject: "Relatório Semanal: Backlog de Chamados",
+                    apiUrls: {
+                        incidents: "https://prod-53.westus.logic.azure.com:443/workflows/85a4599116e146efa252e0c0963df655/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=yzLU5yjoSXqGVTjWFbkdSBOnRrBLR63k5_DPKf-9hB0",
+                        groups: "https://prod-128.westus.logic.azure.com:443/workflows/68f5fe80ae2442d4b53fac09e49bd949/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=zUqYbIMukdgoXCKNItXtAekGJbCCmmjMd9sLhTkXnNg"
+                    },
+                    async generate() {
+                        const [incidentsResponse, groupsResponse] = await Promise.all([
+                            fetch(this.apiUrls.incidents, { method: 'POST' }),
+                            fetch(this.apiUrls.groups, { method: 'POST' })
+                        ]);
+
+                        if (!incidentsResponse.ok) throw new Error(`Erro na API de incidentes: ${incidentsResponse.status}`);
+                        if (!groupsResponse.ok) throw new Error(`Erro na API de grupos: ${groupsResponse.status}`);
+                        
+                        const incidentsData = await incidentsResponse.json();
+                        const groupsData = await groupsResponse.json();
+
+                        const backlogItems = this.utils.extractBacklogItems(incidentsData);
+                        const groupsMap = this.utils.createGroupsMap(groupsData);
+                        const processedData = this.utils.processBacklogData(backlogItems, groupsMap);
+                        
+                        const ccRecipientEmails = new Set();
+                        const relevantAssignmentGroups = new Set(processedData.allItems.map(item => item.assignmentGroup));
+                        const groupEmailMap = new Map();
+                        if (groupsData && Array.isArray(groupsData.destinatarios)) {
+                            groupsData.destinatarios.forEach(group => {
+                                if (group.cr9ff_grupodeatribuicao && group.cr9ff_destinatarios) {
+                                    groupEmailMap.set(group.cr9ff_grupodeatribuicao, group.cr9ff_destinatarios);
+                                }
+                            });
+                        }
+                        relevantAssignmentGroups.forEach(groupName => {
+                            if (groupEmailMap.has(groupName)) {
+                                const emailString = groupEmailMap.get(groupName);
+                                emailString.split(';').forEach(email => {
+                                    const trimmedEmail = email.trim();
+                                    if (trimmedEmail) ccRecipientEmails.add(trimmedEmail);
+                                });
+                            }
+                        });
+                        const ccRecipientsString = Array.from(ccRecipientEmails).join(';');
+
+                        const htmlBody = this.utils.generateHtmlBody(processedData);
+                        const attachment = this.utils.generateXLSX(processedData.allItems);
+                        
+                        return {
+                            subject: `${this.subject} - ${backlogItems.length} Chamados`,
+                            htmlBody,
+                            attachment,
+                            ccRecipients: ccRecipientsString
+                        };
+                    },
+                    
+                    utils: {
+                        CRITICAL_AGE_DAYS: 30,
+                        NEW_AGE_DAYS: 7,
+
+                        extractBacklogItems(data) {
+                            const backlog = data?.body?.backlog || data?.backlog || (Array.isArray(data) ? data : null);
+                            if (!backlog) throw new Error("Array 'backlog' não foi encontrado nos dados da API.");
+                            return backlog;
+                        },
+
+                        createGroupsMap(data) {
+                            const groupsMap = new Map();
+                            if (data && Array.isArray(data.destinatarios)) {
+                                data.destinatarios.forEach(group => {
+                                    if (group.cr9ff_grupodeatribuicao) {
+                                        groupsMap.set(group.cr9ff_grupodeatribuicao, {
+                                            coordinator: group.cr9ff_coordenador || 'N/A',
+                                            manager: group.cr9ff_gerente || 'N/A'
+                                        });
+                                    }
+                                });
+                            }
+                            return groupsMap;
+                        },
+
+                        parseDate(dateString) {
+                            if (!dateString) return null;
+                            const parts = dateString.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+                            if (!parts) return null;
+                            return new Date(parts[3], parts[2] - 1, parts[1]);
+                        },
+
+                        processBacklogData(backlogItems, groupsMap) {
+                            const now = new Date();
+                            const criticalsByPrimaryGroup = {};
+                            const criticalsByAssignmentGroup = { incidents: {}, requests: {} };
+
+                            const allItems = backlogItems.map(item => {
+                                const itemNumber = (item.cr9ff_tarefa || '').trim().toUpperCase();
+                                const assignmentGroup = item.cr9ff_grupodeatribuio || 'Não especificado';
+                                const groupInfo = groupsMap.get(assignmentGroup) || { coordinator: 'N/A', manager: 'N/A' };
+                                const openedDateStr = item['cr9ff_criadoem@OData.Community.Display.V1.FormattedValue'];
+                                const openedDate = this.parseDate(openedDateStr);
+                                const ageInDays = openedDate ? (now - openedDate) / (1000 * 60 * 60 * 24) : 0;
+
+                                return {
+                                    number: itemNumber,
+                                    description: item.cr9ff_descrioresumida || itemNumber,
+                                    primaryGroup: item.cr9ff_primrio_1 || 'Sem Grupo Primário',
+                                    assignmentGroup,
+                                    coordinator: groupInfo.coordinator,
+                                    manager: groupInfo.manager,
+                                    opened: openedDateStr,
+                                    openedDate,
+                                    isIncident: itemNumber.startsWith('INC'),
+                                    isRequest: itemNumber.startsWith('RITM'),
+                                    isCritical: ageInDays > this.CRITICAL_AGE_DAYS,
+                                    isNew: ageInDays <= this.NEW_AGE_DAYS,
+                                    wasCriticalLastWeek: ageInDays > (this.CRITICAL_AGE_DAYS + 7)
+                                };
+                            });
+
+                            const metrics = {
+                                totalCount: allItems.length,
+                                incidentCount: 0,
+                                requestCount: 0,
+                                criticalIncidentCount: 0,
+                                criticalRequestCount: 0,
+                                newThisWeekCount: 0,
+                                previousWeekCriticalIncidentCount: 0,
+                                previousWeekCriticalRequestCount: 0,
+                            };
+
+                            allItems.forEach(item => {
+                                if (item.isIncident) metrics.incidentCount++;
+                                if (item.isRequest) metrics.requestCount++;
+                                if (item.isNew) metrics.newThisWeekCount++;
+
+                                if (item.isCritical) {
+                                    if (item.isIncident) metrics.criticalIncidentCount++;
+                                    if (item.isRequest) metrics.criticalRequestCount++;
+                                    const offenderType = item.isIncident ? 'incidents' : 'requests';
+                                    criticalsByAssignmentGroup[offenderType][item.assignmentGroup] = (criticalsByAssignmentGroup[offenderType][item.assignmentGroup] || 0) + 1;
+                                    if (item.wasCriticalLastWeek) {
+                                        if (item.isIncident) metrics.previousWeekCriticalIncidentCount++;
+                                        if (item.isRequest) metrics.previousWeekCriticalRequestCount++;
+                                    }
+                                    const { primaryGroup, assignmentGroup, manager, coordinator } = item;
+                                    if (!criticalsByPrimaryGroup[primaryGroup]) {
+                                        criticalsByPrimaryGroup[primaryGroup] = { responsibles: {}, assignmentGroups: {} };
+                                    }
+                                    if (!criticalsByPrimaryGroup[primaryGroup].responsibles[manager]) {
+                                        criticalsByPrimaryGroup[primaryGroup].responsibles[manager] = new Set();
+                                    }
+                                    criticalsByPrimaryGroup[primaryGroup].responsibles[manager].add(coordinator);
+                                    if (!criticalsByPrimaryGroup[primaryGroup].assignmentGroups[assignmentGroup]) {
+                                        criticalsByPrimaryGroup[primaryGroup].assignmentGroups[assignmentGroup] = { incidents: [], requests: [] };
+                                    }
+                                    const list = item.isIncident ? 'incidents' : 'requests';
+                                    criticalsByPrimaryGroup[primaryGroup].assignmentGroups[assignmentGroup][list].push(item);
+                                }
+                            });
+
+                            const getTopOffenders = (offendersObj) => Object.entries(offendersObj)
+                                .sort(([, a], [, b]) => b - a)
+                                .slice(0, 3);
+
+                            return {
+                                ...metrics,
+                                allItems,
+                                criticalsByPrimaryGroup,
+                                topIncidentOffenders: getTopOffenders(criticalsByAssignmentGroup.incidents),
+                                topRequestOffenders: getTopOffenders(criticalsByAssignmentGroup.requests),
+                            };
+                        },
+
+                        generateHtmlBody(data) {
+                            const kpiHtml = this._generateKpiHtml(data);
+                            const incidentHighlights = this._generateHighlightsSection('Destaques de Incidentes', { bg: '#fffbeb', border: '#fde68a' }, data.criticalIncidentCount, data.previousWeekCriticalIncidentCount, data.topIncidentOffenders);
+                            const requestHighlights = this._generateHighlightsSection('Destaques de Requisições', { bg: '#f0f9ff', border: '#bae6fd' }, data.criticalRequestCount, data.previousWeekCriticalRequestCount, data.topRequestOffenders);
+                            const criticalSectionHtml = this._generateCriticalsSection(`Pontos Críticos de Atenção (> ${this.CRITICAL_AGE_DAYS} dias)`, data.criticalsByPrimaryGroup, { header: '#b91c1c', border: '#fecaca', bg: '#fef2f2', borderLight: '#fee2e2' });
+                            return `${kpiHtml}${incidentHighlights}${requestHighlights}${criticalSectionHtml}`;
+                        },
+
+                        _generateKpiHtml(data) {
+                            const kpiCard = (title, value, colors) => `
+                                <table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%">
+                                    <tr>
+                                        <td bgcolor="${colors.bg}" style="border-radius: 5px; text-align: center; padding: 16px 10px;">
+                                            <p style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; font-size: 28px; font-weight: 700; color: ${colors.text};">${value}</p>
+                                            <p style="font-family: 'Segoe UI', Arial, sans-serif; margin: 4px 0 0 0; font-size: 12px; color: ${colors.subtext}; text-transform: uppercase; letter-spacing: 0.5px;">${title}</p>
+                                        </td>
+                                    </tr>
+                                </table>`;
+                            return `
+                                <table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%" style="margin-bottom: 16px;">
+                                    <tr>
+                                        <td valign="top" width="32%" style="padding-right: 1%; padding-bottom: 16px;">${kpiCard('Total de Incidentes', data.incidentCount, {bg: '#f0fdf4', text: '#15803d', subtext: '#166534'})}</td>
+                                        <td valign="top" width="32%" style="padding-left: 1%; padding-right: 1%; padding-bottom: 16px;">${kpiCard('Total de Requisições', data.requestCount, {bg: '#eff6ff', text: '#1e40af', subtext: '#1e3a8a'})}</td>
+                                        <td valign="top" width="32%" style="padding-left: 1%; padding-bottom: 16px;">${kpiCard('Total em Backlog', data.totalCount, {bg: '#f3f4f6', text: '#1d4ed8', subtext: '#4b5563'})}</td>
+                                    </tr>
+                                    <tr>
+                                        <td valign="top" width="32%" style="padding-right: 1%;">${kpiCard('Incidentes Críticos', data.criticalIncidentCount, {bg: '#fef2f2', text: '#b91c1c', subtext: '#991b1b'})}</td>
+                                        <td valign="top" width="32%" style="padding-left: 1%; padding-right: 1%;">${kpiCard('Requisições Críticas', data.criticalRequestCount, {bg: '#fef2f2', text: '#b91c1c', subtext: '#991b1b'})}</td>
+                                        <td valign="top" width="32%" style="padding-left: 1%;">${kpiCard('Novos na Semana', data.newThisWeekCount, {bg: '#f5f3ff', text: '#5b21b6', subtext: '#4c1d95'})}</td>
+                                    </tr>
+                                </table>`;
+                        },
+
+                        _generateHighlightsSection(title, themeColor, currentCritical, previousCritical, topOffenders) {
+                            let trendText = 'estável';
+                            if (previousCritical > 0) {
+                                const change = ((currentCritical - previousCritical) / previousCritical) * 100;
+                                if (change > 5) trendText = `<span style="color: #b91c1c;">aumentou ${change.toFixed(0)}%</span>`;
+                                else if (change < -5) trendText = `<span style="color: #166534;">diminuiu ${Math.abs(change).toFixed(0)}%</span>`;
+                            }
+                            const offendersHtml = topOffenders.length > 0
+                                ? topOffenders.map(([name, count]) => `<tr><td style="padding: 2px 0; font-family: 'Segoe UI', Arial, sans-serif;">${name}</td><td style="padding: 2px 0; text-align: right; font-family: 'Segoe UI', Arial, sans-serif;"><strong>${count} chamados</strong></td></tr>`).join('')
+                                : '<tr><td style="padding: 2px 0; font-family: \'Segoe UI\', Arial, sans-serif;">Nenhum ofensor crítico identificado.</td></tr>';
+                            return `
+                                <table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%" style="margin-bottom: 24px;">
+                                    <tr>
+                                        <td bgcolor="${themeColor.bg}" style="padding: 16px; border-radius: 8px; border: 1px solid ${themeColor.border};">
+                                            <table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%">
+                                                <tr><td style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 16px; color: #1e293b; font-weight: bold; padding-bottom: 12px;">${title}</td></tr>
+                                                <tr><td style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; color: #475569; padding-bottom: 12px;">O número de chamados críticos ${trendText} em relação à semana passada (de ${previousCritical} para ${currentCritical}).</td></tr>
+                                                <tr><td style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; color: #1e293b; font-weight: bold; padding-bottom: 8px;">Grupos de Atribuição com mais ofensores:</td></tr>
+                                                <tr><td><table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%" style="font-size: 14px; color: #475569;">${offendersHtml}</table></td></tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>`;
+                        },
+
+                        _generateCriticalsSection(title, dataObject, themeColor) {
+                            if (Object.keys(dataObject).length === 0) {
+                                return `<table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%">
+                                    <tr><td style="font-size: 20px; color: ${themeColor.header}; padding-top: 24px; padding-bottom: 16px; border-top: 2px solid ${themeColor.border}; font-family: 'Segoe UI', Arial, sans-serif; font-weight: bold;">${title}</td></tr>
+                                    <tr><td><p style="font-size: 14px; color: #166534; background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 8px; margin:0; font-family: 'Segoe UI', Arial, sans-serif;">Nenhum chamado crítico encontrado.</p></td></tr>
+                                </table>`;
+                            }
+                            const cardsHtml = Object.keys(dataObject).sort().map(primaryGroupName => {
+                                const primaryGroupData = dataObject[primaryGroupName];
+                                const responsiblesHtml = Object.keys(primaryGroupData.responsibles).sort().map(manager => {
+                                    const coordinators = Array.from(primaryGroupData.responsibles[manager]).sort().join(', ');
+                                    return `<p style="font-size: 12px; color: #4b5563; margin: 4px 0 0 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif;"><strong>${manager}</strong> (Coord.: ${coordinators})</p>`;
+                                }).join('');
+                                const assignmentGroupsHtml = Object.keys(primaryGroupData.assignmentGroups)
+                                    .sort((a, b) => (primaryGroupData.assignmentGroups[b].incidents.length + primaryGroupData.assignmentGroups[b].requests.length) - (primaryGroupData.assignmentGroups[a].incidents.length + primaryGroupData.assignmentGroups[a].requests.length))
+                                    .map(assignmentGroupName => {
+                                        const groupData = primaryGroupData.assignmentGroups[assignmentGroupName];
+                                        groupData.incidents.sort((a, b) => a.openedDate - b.openedDate);
+                                        groupData.requests.sort((a, b) => a.openedDate - b.openedDate);
+                                        const totalCriticals = groupData.incidents.length + groupData.requests.length;
+                                        const incidentsHtml = this._createTicketListHtml('Incidentes', groupData.incidents);
+                                        const requestsHtml = this._createTicketListHtml('Requisições', groupData.requests);
+                                        return `
+                                            <table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%" style="padding-top: 12px; border-top: 1px solid ${themeColor.borderLight}; margin-top: 12px;">
+                                                <tr><td style="font-size: 14px; color: #1e293b; font-weight: bold; font-family: 'Segoe UI', Arial, sans-serif;">${assignmentGroupName}</td></tr>
+                                                <tr><td style="padding-left: 15px;">
+                                                    <p style="font-size: 14px; color: #374151; margin: 4px 0 0 0; font-family: 'Segoe UI', Arial, sans-serif;">Total de Chamados Críticos: ${totalCriticals}</p>
+                                                    ${requestsHtml}
+                                                    ${incidentsHtml}
+                                                </td></tr>
+                                            </table>`;
+                                    }).join('');
+                                return `
+                                    <table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%" style="border: 1px solid ${themeColor.border}; border-radius: 8px; margin-bottom: 24px;">
+                                        <tr><td bgcolor="${themeColor.bg}" style="padding: 12px 16px; font-size: 16px; font-weight: bold; border-bottom: 1px solid ${themeColor.border}; font-family: 'Segoe UI', Arial, sans-serif; border-radius: 8px 8px 0 0;">${primaryGroupName}</td></tr>
+                                        <tr><td style="padding: 12px 16px;">
+                                            <table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%">
+                                                <tr><td style="padding-bottom: 12px;">
+                                                    <p style="font-size: 12px; font-weight: bold; color: #374151; margin: 0 0 4px 0; font-family: 'Segoe UI', Arial, sans-serif;">Responsáveis Envolvidos:</p>
+                                                    ${responsiblesHtml}
+                                                </td></tr>
+                                                <tr><td>${assignmentGroupsHtml}</td></tr>
+                                            </table>
+                                        </td></tr>
+                                    </table>`;
+                            }).join('');
+                            return `<table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%">
+                                        <tr><td style="font-size: 20px; color: ${themeColor.header}; padding-top: 24px; padding-bottom: 16px; border-top: 2px solid ${themeColor.border}; font-family: 'Segoe UI', Arial, sans-serif; font-weight: bold;">${title}</td></tr>
+                                        <tr><td>${cardsHtml}</td></tr>
+                                    </table>`;
+                        },
+
+                        _createTicketListHtml(title, tickets) {
+                            if (tickets.length === 0) return '';
+                            const MAX_TO_SHOW = 5;
+                            let ticketNumbers = tickets.slice(0, MAX_TO_SHOW).map(item => item.number).join(', ');
+                            if (tickets.length > MAX_TO_SHOW) {
+                                ticketNumbers += `, <span style="color: #991b1b; font-weight: bold;">+${tickets.length - MAX_TO_SHOW} a mais</span>`;
+                            }
+                            return `<p style="font-size: 12px; color: #4b5563; margin: 4px 0 0 0; font-family: 'Segoe UI', Arial, sans-serif;"><strong>${title} mais antigos:</strong> ${ticketNumbers}</p>`;
+                        },
+
+                        generateXLSX(allItems) {
+                            const dataForSheet = allItems.map(item => ({
+                                'Número do Chamado': item.number,
+                                'Descrição Resumida': item.description,
+                                'Grupo Primário': item.primaryGroup,
+                                'Grupo de Atribuição': item.assignmentGroup,
+                                'Coordenador': item.coordinator,
+                                'Gerente': item.manager,
+                                'Aberto em': item.opened
+                            }));
+                            const worksheet = XLSX.utils.json_to_sheet(dataForSheet);
+                            const workbook = XLSX.utils.book_new();
+                            XLSX.utils.book_append_sheet(workbook, worksheet, "Backlog de Chamados");
+                            const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+                            return { filename: 'Relatorio_Backlog_Chamados.xlsx', content: wbout };
+                        }
+                    }
+                },
+                'relatorio-atrasos': {
+                    title: "Relatório - Mudanças Atrasadas",
+                    description: "Gera um relatório sumarizado de todas as mudanças em atraso.",
+                    bannerUrl: "https://i.ibb.co/k2z4hvP0/Capas-E-mails-7.png",
+                    emailTitle: "Situação Atual de Mudanças Atrasadas",
+                    subject: "Relatório Semanal: Mudanças em Atraso",
+                },
+                'comunicado-resolucao': {
+                    title: "Comunicado - Resolução de Problema",
+                    description: "Relatório de causa raiz e resolução de um problema.",
+                    bannerUrl: "https://i.ibb.co/7t67nJDj/Problema-Resolvido-1.png",
+                    emailTitle: "Encerramento de Problema Crítico",
+                    subject: "Problema Resolvido ✅ - {{SERVIÇO_AFETADO}} | {{CODIGO_PROBLEMA}}",
+                    body: (data) => `
+                        <!-- Resumo do Problema -->
+                        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="padding-bottom: 24px;">
+                            <tr>
+                                <td style="background-color:#F0FAF7; border-left: 4px solid #388E3C; border-radius: 4px; padding: 16px 20px;">
+                                    <p style="margin: 0; font-size: 14px; color: #555555; line-height: 1.5;">${data.resumo || 'Resumo do problema não encontrado.'}</p>
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        <!-- KPIs de Impacto -->
+                        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="padding-bottom: 24px;">
+                            <tr><td><h3 style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 18px; color: #2C2C2C; font-weight: 700; margin: 0 0 16px 0;">Resumo do Impacto</h3></td></tr>
+                            <tr>
+                                <td>
+                                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                                        <tr>
+                                            <td width="49%" valign="top" style="padding-right: 1%;">
+                                                <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td style="background-color: #f8f8f8; border-radius: 5px; text-align: center; padding: 16px 10px;">
+                                                    <p style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; font-size: 26px; font-weight: 700; color: #D32F2F;">${data.kpi1_valor || 'N/A'}</p>
+                                                    <p style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">${data.kpi1_texto || 'Incidentes Gerados'}</p>
+                                                </td></tr></table>
+                                            </td>
+                                            <td width="49%" valign="top" style="padding-left: 1%;">
+                                                <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td style="background-color: #f8f8f8; border-radius: 5px; text-align: center; padding: 16px 10px;">
+                                                    <p style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; font-size: 26px; font-weight: 700; color: #FB8C00;">${data.kpi2_valor || 'N/A'}</p>
+                                                    <p style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">${data.kpi2_texto || 'Impacto'}</p>
+                                                </td></tr></table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <!-- Análise de Causa Raiz (RCA) -->
+                        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="padding-bottom: 24px;">
+                            <tr><td style="background-color: #f8f8f8; border-radius: 5px; padding: 16px;">
+                                <h4 style="margin: 0 0 12px 0; font-size: 16px; color: #2C2C2C; font-weight: 600;">Análise de Causa Raiz (RCA)</h4>
+                                <ul style="margin: 0; padding-left: 15px; font-size: 14px; color: #555555; line-height: 1.5;">${data.rca || 'Causa raiz não encontrada.'}</ul>
+                            </td></tr>
+                        </table>
+
+                        <!-- Ações de Correção -->
+                        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="padding-bottom: 24px;">
+                            <tr><td style="background-color: #f8f8f8; border-radius: 5px; padding: 16px;">
+                                <h4 style="margin: 0 0 12px 0; font-size: 16px; color: #2C2C2C; font-weight: 600;">Plano de Ação</h4>
+                                <ul style="margin: 0; padding-left: 15px; font-size: 14px; color: #555555; line-height: 1.5;">${data.plano_acao || 'Plano de ação não encontrado.'}</ul>
+                            </td></tr>
+                        </table>
+
+                        <!-- Resultado para o Negócio -->
+                        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="padding-bottom: 24px;">
+                            <tr><td><h3 style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 18px; color: #2C2C2C; font-weight: 700; margin: 0 0 8px 0; border-bottom: 1px solid #D1D1D1; padding-bottom: 8px;">Resultado para o Negócio</h3></td></tr>
+                            <tr><td><p style="margin-top: 8px; font-size: 14px; color: #555555; line-height: 1.6;">${data.resultado_negocio || 'Resultado para o negócio não encontrado.'}</p></td></tr>
+                        </table>
+
+                        <!-- Seção Reduz Aí -->
+                        <div id="reduz-ai-section">
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                                <tr><td style="background-color:#f0fdfa; border-radius: 5px; padding: 20px;">
+                                    <table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>
+                                        <td width="80" valign="middle" style="padding-right: 20px;"><img alt="Selo de Resolvido" width="80" src="https://i.ibb.co/r9PZ7Dm/RD.png"></td>
+                                        <td valign="middle">
+                                            <p style="margin: 0 0 8px 0; font-size: 15px; color: #0d9488; font-weight: 600;">Problema resolvido e operação estabilizada.</p>
+                                            <p style="margin: 0; font-size: 14px; color: #0c8379;"><strong>Reconhecimento Especial:</strong> Parabéns a todas as equipes e profissionais envolvidos pela atuação precisa e colaborativa na resolução deste problema.</p>
+                                        </td>
+                                    </tr></table>
+                                </td></tr>
+                            </table>
+                        </div>
+                    `
+                },
+                'comunicado-mudanca': {
+                    title: "Comunicado Interno - Mudança de Time",
+                    description: "Anúncio sobre mudanças de responsabilidade na equipe.",
+                    bannerUrl: "https://i.ibb.co/QSGqmMF/Problema-Resolvido-3.png",
+                    emailTitle: "Transformações em curso na área de Mudanças",
+                    subject: "Comunicado: Mudanças na equipe de {{NOME_DA_AREA}}",
+                    body: `<p>A partir de <strong>{{DATA_INICIO}}</strong>, contamos com um(a) novo(a) colaborador(a) no time de Eficiência de Operações: <strong>{{NOME_NOVO_COLABORADOR}}</strong>, que assume a responsabilidade pela disciplina de <strong>Gestão de Mudanças</strong>.</p><br>` +
+                          `<p>{{NOME_ANTIGO_COLABORADOR}}, que anteriormente atuava nessa disciplina, permanece na equipe com novas atribuições focadas em {{NOVAS_ATRIBUICOES}}.</p><br>` +
+                          `<p>Portanto, a partir de hoje, para quaisquer dúvidas ou suporte relacionados à Gestão de Mudanças, favor direcionar ao/à <strong>{{NOME_NOVO_COLABORADOR}}</strong>.</p>`
+                }
+            };
+
+            const templateCardsContainer = document.getElementById('template-cards-container');
+            const editorSection = document.getElementById('editor-section');
+            const sendSection = document.getElementById('send-section');
+            const emailSubjectInput = document.getElementById('email-subject');
+            const powerAutomateUrlInput = document.getElementById('power-automate-url');
+            const sendButton = document.getElementById('send-button');
+            const statusMessage = document.getElementById('status-message');
+            const previewFrame = document.getElementById('email-preview-frame');
+            const toolbar = document.getElementById('text-format-toolbar');
+            const optionsPanel = document.getElementById('template-options-panel');
+            const reduzAiToggle = document.getElementById('toggle-reduz-ai');
+            const manageRecipientsButton = document.getElementById('manage-recipients-button');
+            const addCcButton = document.getElementById('add-cc-button');
+            const fixedRecipientsDisplay = document.getElementById('fixed-recipients-display');
+            const ccRecipientsLog = document.getElementById('cc-recipients-log');
+            const attachmentInput = document.getElementById('attachment-input');
+            const attachmentSection = document.getElementById('attachment-section');
+            const autoAttachmentSection = document.getElementById('auto-attachment-section');
+            const autoAttachmentFilename = document.getElementById('auto-attachment-filename');
+            const testModeToggle = document.getElementById('test-mode-toggle');
+            const insertImageInput = document.getElementById('insert-image-input');
+            
+            // Modal de Teste
+            const testEmailModal = document.getElementById('test-email-modal');
+            const testEmailInput = document.getElementById('test-email-input');
+            const cancelTestEmailBtn = document.getElementById('cancel-test-email');
+            const confirmTestEmailBtn = document.getElementById('confirm-test-email');
+
+            // Modal de CC
+            const ccModal = document.getElementById('cc-modal');
+            const cancelCcBtn = document.getElementById('cancel-cc');
+            const confirmCcBtn = document.getElementById('confirm-cc');
+            const ccGroupsContainer = document.getElementById('cc-groups-container');
+
+            // Modal de Confirmação de Envio
+            const confirmSendModal = document.getElementById('confirm-send-modal');
+            const confirmSendTitle = document.getElementById('confirm-send-title');
+            const confirmSendMessage = document.getElementById('confirm-send-message');
+            const cancelSendBtn = document.getElementById('cancel-send-btn');
+            const confirmSendBtn = document.getElementById('confirm-send-btn');
+
+            // Modal de Destinatários Fixos
+            const fixedRecipientsModal = document.getElementById('fixed-recipients-modal');
+            const recipientTagsContainer = document.getElementById('recipient-tags-container');
+            const addRecipientInput = document.getElementById('add-recipient-input');
+            const addRecipientBtn = document.getElementById('add-recipient-btn');
+            const recipientErrorMessage = document.getElementById('recipient-error-message');
+            const loadDefaultRecipientsBtn = document.getElementById('load-default-recipients-btn');
+            const cancelEditRecipientsBtn = document.getElementById('cancel-edit-recipients');
+            const saveRecipientsBtn = document.getElementById('save-recipients-btn');
+
+            let selectedTemplateCard = null;
+            let fixedRecipients = new Set();
+            let recipients = { dinamicos: '' };
+            let dynamicRecipientGroups = {};
+            let tempFixedRecipients = new Set();
+            let generatedAttachment = null; // Para armazenar o anexo XLSX gerado
+
+            // Inicializa os templates
+            Object.keys(templates).forEach(id => {
+                const template = templates[id];
+                const card = document.createElement('div');
+                card.className = "template-card bg-white p-4 rounded-lg border border-gray-200 cursor-pointer hover:border-blue-500 transition-all duration-200";
+                card.dataset.templateId = id;
+                card.innerHTML = `<h3 class="font-bold text-md text-gray-800">${template.title}</h3><p class="text-sm text-gray-500 mt-1">${template.description}</p>`;
+                card.addEventListener('click', handleTemplateSelection);
+                templateCardsContainer.appendChild(card);
+            });
+
+            // Listeners principais
+            sendButton.addEventListener('click', prepareSendConfirmation);
+            toolbar.addEventListener('mousedown', handleToolbarClick);
+            reduzAiToggle.addEventListener('change', () => updatePreview());
+            manageRecipientsButton.addEventListener('click', openFixedRecipientsModal);
+            addCcButton.addEventListener('click', openCcModal);
+            insertImageInput.addEventListener('change', handleInsertImageFromFile);
+            
+            // Listeners dos Modais
+            cancelTestEmailBtn.addEventListener('click', () => testEmailModal.classList.add('hidden'));
+            confirmTestEmailBtn.addEventListener('click', handleConfirmTestEmail);
+            cancelCcBtn.addEventListener('click', () => ccModal.classList.add('hidden'));
+            confirmCcBtn.addEventListener('click', handleCcConfirm);
+            cancelSendBtn.addEventListener('click', () => confirmSendModal.classList.add('hidden'));
+
+            // Listeners do Modal de Destinatários Fixos
+            cancelEditRecipientsBtn.addEventListener('click', () => fixedRecipientsModal.classList.add('hidden'));
+            saveRecipientsBtn.addEventListener('click', saveFixedRecipients);
+            addRecipientBtn.addEventListener('click', addRecipient);
+            addRecipientInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addRecipient(); } });
+            loadDefaultRecipientsBtn.addEventListener('click', loadDefaultRecipients);
+
+
+            ccModal.querySelectorAll('input[name="cc-option"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    ccGroupsContainer.classList.toggle('hidden', e.target.value !== 'select');
+                });
+            });
+
+            previewFrame.srcdoc = `<body style="font-family: Inter, sans-serif; display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; text-align: center; padding: 2rem;">Selecione o template de comunicado para iniciar a edição.</body>`;
+            
+            carregarDadosDinamicos();
+
+            function handleTemplateSelection(event) {
+                const card = event.currentTarget;
+                if (!card) return;
+                if (selectedTemplateCard) { selectedTemplateCard.classList.remove('selected-card'); }
+                card.classList.add('selected-card');
+                selectedTemplateCard = card;
+                const templateId = card.dataset.templateId;
+                const template = templates[templateId];
+
+                // Reset state for the new template
+                if (Object.keys(dynamicRecipientGroups).length > 0) {
+                    addCcButton.disabled = false;
+                    addCcButton.textContent = 'Adicionar Destinatários em Cópia (Cc)';
+                }
+                recipients.dinamicos = '';
+                updateCcLog();
+                generatedAttachment = null;
+                attachmentSection.classList.remove('hidden');
+                autoAttachmentSection.classList.add('hidden');
+
+                if (template) {
+                    emailSubjectInput.value = template.subject;
+                    editorSection.classList.remove('hidden');
+                    sendSection.classList.remove('hidden');
+                    
+                    if (templateId === 'relatorio-atrasos') {
+                        optionsPanel.classList.add('hidden');
+                        addCcButton.disabled = true;
+                        addCcButton.textContent = 'Destinatários (Cc) são automáticos';
+                        updatePreview(`<div style="text-align:center; color:#64748b; padding:40px;">Gerando relatório dinâmico...</div>`);
+                        generateOverdueReport()
+                            .then(({htmlBody, xlsxData, ccRecipients}) => {
+                                updatePreview(htmlBody);
+                                generatedAttachment = xlsxData;
+                                recipients.dinamicos = ccRecipients;
+                                updateCcLog();
+                                attachmentSection.classList.add('hidden');
+                                autoAttachmentFilename.textContent = xlsxData.filename;
+                                autoAttachmentSection.classList.remove('hidden');
+                            })
+                            .catch(err => {
+                                 updatePreview(`<div style="text-align:center; color:#dc2626; padding:40px;">Erro ao gerar relatório: ${err.message}</div>`);
+                                 addCcButton.disabled = false;
+                                 addCcButton.textContent = 'Adicionar Destinatários em Cópia (Cc)';
+                            });
+                    } else if (templateId === 'relatorio-backlog') {
+                        optionsPanel.classList.add('hidden');
+                        addCcButton.disabled = true;
+                        addCcButton.textContent = 'Destinatários (Cc) são automáticos';
+                        updatePreview(`<div style="text-align:center; color:#64748b; padding:40px;">Gerando relatório de backlog...</div>`);
+                        template.generate()
+                            .then(result => {
+                                updatePreview(result.htmlBody);
+                                emailSubjectInput.value = result.subject;
+                                generatedAttachment = result.attachment;
+                                attachmentSection.classList.add('hidden');
+                                autoAttachmentFilename.textContent = result.attachment.filename;
+                                autoAttachmentSection.classList.remove('hidden');
+                                recipients.dinamicos = result.ccRecipients;
+                                updateCcLog();
+                            })
+                            .catch(err => {
+                                updatePreview(`<div style="text-align:center; color:#dc2626; padding:40px;">Erro ao gerar relatório: ${err.message}</div>`);
+                                addCcButton.disabled = false;
+                                addCcButton.textContent = 'Adicionar Destinatários em Cópia (Cc)';
+                            });
+                    } else if (templateId === 'comunicado-resolucao') {
+                        optionsPanel.classList.remove('hidden');
+                        const exampleData = mockData['PRB0041442'];
+                        emailSubjectInput.value = exampleData.subject;
+                        updatePreview(template.body(exampleData));
+                    } else {
+                        optionsPanel.classList.add('hidden');
+                        if (typeof template.body === 'function') {
+                            updatePreview(template.body({}));
+                        } else {
+                            updatePreview(template.body);
+                        }
+                    }
+                }
+            }
+            
+            const imageWrapperCSS = `
+                .resizable-img-wrapper {
+                  display: inline-block;
+                  resize: both;
+                  overflow: auto;
+                  border: 1px dashed #cbd5e1;
+                  border-radius: 4px;
+                  padding: 4px;
+                  max-width: 100%;
+                }
+                .resizable-img-wrapper > img {
+                  display: block;
+                  width: 100%;
+                  height: auto;
+                }
+            `;
+
+            function setupIframeEditor() {
+                const doc = previewFrame.contentWindow.document;
+                if (!doc) return;
+
+                const style = doc.createElement('style');
+                style.textContent = imageWrapperCSS;
+                doc.head.appendChild(style);
+
+                doc.body.addEventListener('paste', handlePasteImageIntoEditor);
+                doc.body.addEventListener('drop', handleDropImageIntoEditor);
+                doc.body.addEventListener('dragover', (e) => e.preventDefault());
+
+                const hideToolbar = () => { if (!toolbar.matches(':hover')) toolbar.classList.add('hidden'); };
+                doc.addEventListener('selectionchange', handleTextSelection);
+                doc.addEventListener('blur', hideToolbar);
+                document.addEventListener('click', (e) => {
+                    if (e.target.id !== 'email-preview-frame') hideToolbar();
+                });
+            }
+
+            function handleTextSelection() {
+                const doc = previewFrame.contentWindow.document;
+                const selection = previewFrame.contentWindow.getSelection();
+                if (!selection || selection.isCollapsed || !doc.body.contains(selection.focusNode)) {
+                    toolbar.classList.add('hidden');
+                    return;
+                }
+                updateToolbarState();
+                const range = selection.getRangeAt(0);
+                const rect = range.getBoundingClientRect();
+                const frameRect = previewFrame.getBoundingClientRect();
+                const top = frameRect.top + rect.top - toolbar.offsetHeight - 8 + window.scrollY;
+                const left = frameRect.left + rect.left + (rect.width - toolbar.offsetWidth) / 2 + window.scrollX;
+                toolbar.style.top = `${top}px`;
+                toolbar.style.left = `${left}px`;
+                toolbar.classList.remove('hidden');
+            }
+
+            function updateToolbarState() {
+                const doc = previewFrame.contentWindow.document;
+                toolbar.querySelectorAll('button[data-command]').forEach(button => {
+                    const command = button.dataset.command;
+                    let isActive = false;
+                    if (command === 'hiliteColor') {
+                        let node = previewFrame.contentWindow.getSelection().focusNode;
+                        while(node && node.nodeName !== 'BODY') {
+                            if (node.nodeName === 'SPAN' && node.style.backgroundColor === 'yellow') {
+                                isActive = true;
+                                break;
+                            }
+                            node = node.parentNode;
+                        }
+                    } else {
+                         isActive = doc.queryCommandState(command);
+                    }
+                    button.classList.toggle('active', isActive);
+                });
+            }
+            
+            function handleToolbarClick(e) {
+                const button = e.target.closest('button');
+                if (!button) return;
+                e.preventDefault();
+                const command = button.dataset.command;
+                const doc = previewFrame.contentWindow.document;
+                if (command === 'hiliteColor') {
+                    const isActive = button.classList.contains('active');
+                    doc.execCommand('backColor', false, isActive ? 'transparent' : 'yellow');
+                } else {
+                    doc.execCommand(command, false, null);
+                }
+                updateToolbarState();
+            }
+
+            function cleanEmailString(emailString) {
+                if (!emailString || typeof emailString !== 'string') return '';
+                const emailArray = emailString.split(/[;,]/).map(e => e.trim()).filter(e => e && e.includes('@'));
+                return [...new Set(emailArray)].join(';');
+            }
+            
+            function prepareSendConfirmation() {
+                const isTestMode = testModeToggle.checked;
+                const toCount = fixedRecipients.size;
+                const ccCount = cleanEmailString(recipients.dinamicos).split(';').filter(e => e).length;
+
+                if (isTestMode) {
+                    confirmSendTitle.textContent = "Enviar E-mail de Teste";
+                    confirmSendMessage.textContent = "O modo de teste está ativo. Um modal aparecerá para você inserir os e-mails de teste. Deseja continuar?";
+                } else {
+                    confirmSendTitle.textContent = "Confirmar Envio Oficial";
+                    confirmSendMessage.textContent = `Você está prestes a enviar este comunicado para ${toCount} destinatário(s) em 'Para' e ${ccCount} em 'Cópia'. Confirma a ação?`;
+                }
+
+                confirmSendModal.classList.remove('hidden');
+                
+                const currentConfirmBtn = document.getElementById('confirm-send-btn');
+                const newConfirmBtn = currentConfirmBtn.cloneNode(true);
+                currentConfirmBtn.parentNode.replaceChild(newConfirmBtn, currentConfirmBtn);
+                
+                newConfirmBtn.addEventListener('click', () => {
+                    confirmSendModal.classList.add('hidden');
+                    if (isTestMode) {
+                        testEmailModal.classList.remove('hidden');
+                        testEmailInput.focus();
+                    } else {
+                        if (fixedRecipients.size === 0) {
+                            showStatus('Envio cancelado. É necessário adicionar ao menos um destinatário principal (Para).', 'error');
+                            return;
+                        }
+                        executeSend(Array.from(fixedRecipients).join(';'), recipients.dinamicos);
+                    }
+                });
+            }
+            
+            function handleConfirmTestEmail() {
+                const testEmails = testEmailInput.value;
+                if (cleanEmailString(testEmails)) {
+                    executeSend(testEmails, '');
+                    testEmailModal.classList.add('hidden');
+                } else {
+                    showStatus('Por favor, insira um e-mail de teste válido.', 'error');
+                }
+            }
+
+            async function executeSend(destinatariosPara, destinatariosCopia) {
+                const url = powerAutomateUrlInput.value.trim();
+                if (!url) {
+                    showStatus('URL do Power Automate não configurada.', 'error');
+                    return;
+                }
+                
+                sendButton.disabled = true;
+                showStatus('Preparando para enviar...', 'loading');
+
+                const subject = emailSubjectInput.value;
+                const bodyHtml = generateFinalHtml(); 
+                
+                let attachmentContent = null;
+                let attachmentName = null;
+
+                if (generatedAttachment) {
+                    attachmentContent = generatedAttachment.content;
+                    attachmentName = generatedAttachment.filename;
+                } else {
+                    const attachment = attachmentInput.files[0];
+                    if (attachment) {
+                        try {
+                            attachmentContent = await readFileAsBase64(attachment);
+                            attachmentName = attachment.name;
+                        } catch (error) {
+                            showStatus('Erro ao ler o anexo.', 'error');
+                            sendButton.disabled = false;
+                            return;
+                        }
+                    }
+                }
+
+                const payload = { 
+                    htmlParaEnviar: bodyHtml,
+                    assuntoParaEnviar: subject,
+                    destinatariosFixos: cleanEmailString(destinatariosPara),
+                    destinatariosDinamicos: cleanEmailString(destinatariosCopia),
+                    attachmentName: attachmentName,
+                    attachmentContent: attachmentContent
+                };
+
+                showStatus('Enviando...', 'loading');
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) {
+                        showStatus('Comunicado enviado com sucesso!', 'success');
+                    } else {
+                        throw new Error(`Erro no envio: ${response.status} ${response.statusText}`);
+                    }
+                } catch (error) {
+                    console.error('Erro ao enviar para o Power Automate:', error);
+                    showStatus(`Falha no envio. ${error.message}`, 'error');
+                } finally {
+                    sendButton.disabled = false;
+                }
+            }
+
+            function readFileAsBase64(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = (error) => reject(error);
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            function buildEmailHtml(bodyContent, isEditable = false) {
+                if (!selectedTemplateCard) return '';
+                const templateId = selectedTemplateCard.dataset.templateId;
+                const template = templates[templateId];
+                const editableAttribute = isEditable ? `contenteditable="true"` : '';
+                
+                const bodyContainer = document.createElement('div');
+                bodyContainer.innerHTML = bodyContent;
+
+                const reduzAiSection = bodyContainer.querySelector('#reduz-ai-section');
+                if (reduzAiSection) {
+                    reduzAiSection.style.display = (templateId === 'comunicado-resolucao' && reduzAiToggle.checked) ? 'block' : 'none';
+                }
+
+                const finalBody = bodyContainer.innerHTML;
+
+                return `<!DOCTYPE html>
+                    <html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+                    <head>
+                        <meta charset="UTF-8">
+                        <!--[if !mso]><!--><meta http-equiv="X-UA-Compatible" content="IE=edge"><!--<![endif]-->
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <title>${template.emailTitle}</title>
+                        <!--[if mso]><style>table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; } td, a, span { font-family: Arial, sans-serif !important; }</style><![endif]-->
+                        <style>
+                            body { margin:0; padding:0; background-color:#F8F8F8; }
+                            p, li { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; color: #555555; line-height: 1.6; }
+                            strong { color: #000000; }
+                            ul { margin: 0; padding-left: 20px; }
+                            li { margin-bottom: 8px; }
+                            [contenteditable] { outline: none; }
+                            [contenteditable]:focus { box-shadow: 0 0 0 2px #3b82f6 !important; border-radius: 4px; }
+                            .resizable-img-wrapper img { max-width: 100% !important; height: auto !important; }
+                            ${isEditable ? imageWrapperCSS : ''}
+                        </style>
+                    </head>
+                    <body style="margin:0; padding:0; background-color:#F8F8F8; width:100%;">
+                        <center>
+                            <!--[if mso]><table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center" width="600"><tr><td><![endif]-->
+                            <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center" width="600" style="width:100%; max-width:600px; background-color:#FFFFFF; border-radius:6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #D1D1D1; margin: 0 auto;">
+                                <tr><td><img alt="Banner do Comunicado" src="${template.bannerUrl}" width="600" style="width:100%; max-width:600px; display:block; border:0;"></td></tr>
+                                <tr><td style="padding: 32px;">
+                                    <h2 style="margin: 0 0 24px 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 22px; color: #333333; font-weight: 700;" ${editableAttribute}>${template.emailTitle}</h2>
+                                    <div id="email-body-content" ${editableAttribute}>${finalBody}</div>
+                                </td></tr>
+                                <tr><td style="background-color:#F0F0F0; text-align:center; padding:16px 20px;">
+                                    <p style="font-family:'Segoe UI', Arial, sans-serif; font-size:11px; color:#777777; margin:0;">Esta é uma comunicação automática. Por favor, não responda.</p>
+                                </td></tr>
+                            </table>
+                            <!--[if mso]></td></tr></table><![endif]-->
+                        </center>
+                    </body></html>`;
+            }
+            
+            function updatePreview(initialBody) {
+                const doc = previewFrame.contentWindow.document;
+                let bodyContent = initialBody;
+                if(!bodyContent && doc && doc.getElementById('email-body-content')) {
+                    bodyContent = doc.getElementById('email-body-content').innerHTML;
+                } else if (!bodyContent) {
+                    bodyContent = '';
+                }
+                previewFrame.srcdoc = buildEmailHtml(bodyContent, true);
+                previewFrame.onload = setupIframeEditor;
+            }
+
+            function generateFinalHtml() {
+                toolbar.classList.add('hidden');
+                const doc = previewFrame.contentWindow.document;
+                const finalTitle = doc.querySelector('h2').innerHTML;
+                const editableContentDiv = doc.getElementById('email-body-content');
+                if (!editableContentDiv) return '';
+                
+                const clone = editableContentDiv.cloneNode(true);
+                
+                clone.querySelectorAll('.resizable-img-wrapper').forEach(wrapper => {
+                    const img = wrapper.querySelector('img');
+                    if (!img) { wrapper.remove(); return; }
+                    const computedWidth = wrapper.style.width || 'auto';
+                    const replacement = document.createElement('img');
+                    replacement.src = img.src;
+                    replacement.alt = img.alt || '';
+                    replacement.style.width = computedWidth;
+                    replacement.style.height = 'auto';
+                    replacement.style.maxWidth = '100%';
+                    wrapper.parentNode.replaceChild(replacement, wrapper);
+                });
+                
+                clone.querySelectorAll('span[style*="background-color: transparent"]').forEach(el => { el.outerHTML = el.innerHTML; });
+                
+                const finalBodyContent = clone.innerHTML;
+                const finalHtml = buildEmailHtml(finalBodyContent, false);
+                return finalHtml.replace(/<h2[^>]*>.*?<\/h2>/, `<h2 style="margin: 0 0 24px 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 22px; color: #333333; font-weight: 700;">${finalTitle}</h2>`);
+            }
+
+            function showStatus(message, type = 'info') {
+                statusMessage.textContent = message;
+                statusMessage.className = 'mt-3 text-sm font-medium text-center ';
+                switch(type) {
+                    case 'success': statusMessage.classList.add('text-green-600'); break;
+                    case 'error': statusMessage.classList.add('text-red-600'); break;
+                    case 'loading': statusMessage.classList.add('text-blue-600'); break;
+                    default: statusMessage.classList.add('text-gray-600');
+                }
+            }
+
+            // --- Lógica para Destinatários Fixos (Modal) ---
+            function openFixedRecipientsModal() {
+                tempFixedRecipients = new Set(fixedRecipients);
+                renderRecipientTags();
+                fixedRecipientsModal.classList.remove('hidden');
+                addRecipientInput.focus();
+            }
+
+            function renderRecipientTags() {
+                recipientTagsContainer.innerHTML = tempFixedRecipients.size === 0 
+                    ? `<p class="text-gray-500 text-center p-4">Nenhum e-mail adicionado.</p>`
+                    : '';
+                tempFixedRecipients.forEach(createRecipientTag);
+            }
+
+            function createRecipientTag(email) {
+                const tag = document.createElement('div');
+                tag.className = 'recipient-tag';
+                tag.innerHTML = `<span>${email}</span><button type="button" title="Remover">&times;</button>`;
+                tag.querySelector('button').addEventListener('click', () => {
+                    tempFixedRecipients.delete(email);
+                    renderRecipientTags();
+                });
+                if(recipientTagsContainer.querySelector('p')) {
+                    recipientTagsContainer.innerHTML = '';
+                }
+                recipientTagsContainer.appendChild(tag);
+            }
+
+            function addRecipient() {
+                const email = addRecipientInput.value.trim();
+                recipientErrorMessage.textContent = '';
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    recipientErrorMessage.textContent = 'Formato de e-mail inválido.';
+                    return;
+                }
+                if (tempFixedRecipients.has(email)) {
+                    recipientErrorMessage.textContent = 'Este e-mail já foi adicionado.';
+                    return;
+                }
+                tempFixedRecipients.add(email);
+                renderRecipientTags();
+                addRecipientInput.value = '';
+                addRecipientInput.focus();
+            }
+
+            function saveFixedRecipients() {
+                fixedRecipients = new Set(tempFixedRecipients);
+                updateFixedRecipientsDisplay();
+                fixedRecipientsModal.classList.add('hidden');
+            }
+
+            function updateFixedRecipientsDisplay() {
+                fixedRecipientsDisplay.textContent = fixedRecipients.size === 0
+                    ? 'Nenhum destinatário fixo definido.'
+                    : `${fixedRecipients.size} destinatário(s) fixo(s) definido(s). Clique para gerenciar.`;
+            }
+            
+            function loadDefaultRecipients() {
+                const DESTINATARIOS_FIXOS_RAW = `
+                    mara.lassabia@assai.com.br; fernando.mazzei@assai.com.br; fabio.benevento@assai.com.br; nelson.alves@assai.com.br; eduardo.nader@assai.com.br; tiago.pichelli@assai.com.br; elcio.kamei@assai.com.br; felipe.nemeth@assai.com.br; laercio.junior@assai.com.br; raphael.fusco@assai.com.br; marilia.scatena@assai.com.br; dennys.araujo@assai.com.br; claudia.lima@assai.com.br; denis.paiotti@assai.com.br; fabricio.rosa@assai.com.br; gabriela.graciano@assai.com.br; daniel.ribeiro@assai.com.br; luis.ramalho@assai.com.br; silas.souza@assai.com.br; carlos.negron@assai.com.br; yam.trigueiro@assai.com.br; leonardo.filho@assai.com.br; paulo.ribeiro@assai.com.br; magno.silva@assai.com.br; francisco.neto@assai.com.br; washington.santos@assai.com.br; joao.filho2@assai.com.br; michele.silva2@assai.com.br; paulo.rodrigues@assai.com.br; elisabete.brandao@assai.com.br; luis.silva@assai.com.br; renato.yamamoto@assai.com.br; tiago.bello@assai.com.br; elaine.silva2@assai.com.br; marcela.silva2@assai.com.br; maria.dias@assai.com.br; renato.viana@assai.com.br; sandra.santos@assai.com.br; celso.motta@assai.com.br; gilberto.caray@assai.com.br; cassio.rodrigues@assai.com.br; ti.qualidade@assai.com.br
+                `;
+                tempFixedRecipients = new Set(cleanEmailString(DESTINATARIOS_FIXOS_RAW).split(';'));
+                renderRecipientTags();
+            }
+
+            // --- Lógica para Destinatários Dinâmicos (Cc) ---
+            async function carregarDadosDinamicos() {
+                const url = 'https://prod-128.westus.logic.azure.com:443/workflows/68f5fe80ae2442d4b53fac09e49bd949/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=zUqYbIMukdgoXCKNItXtAekGJbCCmmjMd9sLhTkXnNg';
+                addCcButton.textContent = 'Carregando grupos...';
+                addCcButton.disabled = true;
+                try {
+                    const response = await fetch(url, { method: 'POST' });
+                    if (!response.ok) throw new Error(`Falha ao buscar dados: ${response.statusText}`);
+                    const data = await response.json();
+                    if (!Array.isArray(data.destinatarios)) throw new Error("A resposta não contém um array válido de 'destinatarios'.");
+                    
+                    data.destinatarios.forEach(d => {
+                        if (d.cr9ff_grupodeatribuicao && d.cr9ff_destinatarios) {
+                            dynamicRecipientGroups[d.cr9ff_grupodeatribuicao] = d.cr9ff_destinatarios;
+                        }
+                    });
+                    addCcButton.textContent = 'Adicionar Destinatários em Cópia (Cc)';
+                    addCcButton.disabled = false;
+                } catch (erro) {
+                    console.error('Erro ao obter dados dinâmicos:', erro.message);
+                    addCcButton.textContent = 'Erro ao carregar grupos';
+                }
+            }
+
+            function openCcModal() {
+                ccGroupsContainer.innerHTML = '';
+                Object.keys(dynamicRecipientGroups).sort().forEach(groupName => {
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center';
+                    div.innerHTML = `
+                        <input id="group-${groupName.replace(/\s/g, '-')}" type="checkbox" value="${groupName}" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <label for="group-${groupName.replace(/\s/g, '-')}" class="ml-2 text-sm text-gray-600">${groupName}</label>
+                    `;
+                    ccGroupsContainer.appendChild(div);
+                });
+                ccModal.classList.remove('hidden');
+            }
+
+            function handleCcConfirm() {
+                const option = document.querySelector('input[name="cc-option"]:checked').value;
+                let ccEmails = new Set();
+                if (option === 'all') {
+                    Object.values(dynamicRecipientGroups).forEach(emailString => emailString.split(';').forEach(email => ccEmails.add(email.trim())));
+                } else {
+                    ccGroupsContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
+                        const groupName = checkbox.value;
+                        if (dynamicRecipientGroups[groupName]) {
+                            dynamicRecipientGroups[groupName].split(';').forEach(email => ccEmails.add(email.trim()));
+                        }
+                    });
+                }
+                recipients.dinamicos = Array.from(ccEmails).join(';');
+                updateCcLog();
+                ccModal.classList.add('hidden');
+            }
+
+            function updateCcLog() {
+                const count = recipients.dinamicos ? recipients.dinamicos.split(';').filter(e => e).length : 0;
+                ccRecipientsLog.innerHTML = count > 0 ? `<p class="font-semibold mt-2">${count} destinatário(s) em cópia adicionado(s).</p>` : '';
+            }
+
+            // --- LÓGICA DE INSERÇÃO DE IMAGEM ---
+            function insertImageAsResizable(dataUrl, naturalWidth) {
+                const iFrameDoc = previewFrame.contentWindow.document;
+                const body = iFrameDoc.getElementById('email-body-content') || iFrameDoc.body;
+                const initialWidth = Math.min(naturalWidth || 480, 540);
+                const wrapper = iFrameDoc.createElement('div');
+                wrapper.className = 'resizable-img-wrapper';
+                wrapper.contentEditable = 'false';
+                wrapper.style.width = initialWidth + 'px';
+                const img = iFrameDoc.createElement('img');
+                img.src = dataUrl;
+                img.alt = 'imagem inserida';
+                wrapper.appendChild(img);
+                
+                const sel = previewFrame.contentWindow.getSelection();
+                if (sel && sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0);
+                    if (body.contains(range.startContainer)) {
+                        range.deleteContents();
+                        range.insertNode(wrapper);
+                        range.setStartAfter(wrapper);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    } else {
+                        body.appendChild(wrapper);
+                    }
+                } else {
+                     body.appendChild(wrapper);
+                }
+                body.focus();
+            }
+
+            function fileToDataURL(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(new Error('Falha ao ler a imagem.'));
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            async function processImageFile(file) {
+                 try {
+                    const dataUrl = await fileToDataURL(file);
+                    const imgObj = new Image();
+                    imgObj.onload = () => insertImageAsResizable(dataUrl, imgObj.naturalWidth);
+                    imgObj.src = dataUrl;
+                } catch (error) {
+                     console.error("Erro ao processar imagem:", error);
+                     showStatus('Falha ao processar a imagem.', 'error');
+                }
+            }
+
+            async function handlePasteImageIntoEditor(e) {
+                const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items || [];
+                for (const item of items) {
+                    if (item.type?.startsWith('image/')) {
+                        e.preventDefault();
+                        processImageFile(item.getAsFile());
+                        break;
+                    }
+                }
+            }
+
+            async function handleDropImageIntoEditor(e) {
+                e.preventDefault();
+                const files = e.dataTransfer?.files || [];
+                const imageFile = Array.from(files).find(f => f.type.startsWith('image/'));
+                if (imageFile) processImageFile(imageFile);
+            }
+
+            async function handleInsertImageFromFile(e) {
+                const file = e.target.files[0];
+                if (file?.type.startsWith('image/')) {
+                    processImageFile(file);
+                }
+                e.target.value = '';
+            }
+
+            // --- LÓGICA DO RELATÓRIO DE ATRASOS ---
+            function report_parseDate(dateString) {
+                if (!dateString || typeof dateString !== 'string') return null;
+                const parts = dateString.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+                if (!parts) return null;
+                const day = parseInt(parts[1], 10), month = parseInt(parts[2], 10) - 1, year = parseInt(parts[3], 10);
+                const date = new Date(year, month, day);
+                return isNaN(date.getTime()) ? null : date;
+            }
+
+            function report_diffInDays(date1, date2) {
+                return Math.ceil((date1 - date2) / (1000 * 60 * 60 * 24));
+            }
+            
+            function report_getPriorityStyle(priorityText) {
+                const p = (priorityText || '4').charAt(0);
+                const styleMap = { '1': { text: 'Crítica' }, '2': { text: 'Alta' }, '3': { text: 'Moderada' }, 'default': { text: 'Baixa' } };
+                return styleMap[p] || styleMap['default'];
+            }
+
+            function report_corrigirEEnriquecerMudancas(mudancas, destinatarios) {
+                if (!mudancas) return [];
+                if (!destinatarios) return mudancas;
+                const destinatariosMap = new Map(destinatarios.map(g => [g.cr9ff_grupodeatribuicao, g]));
+                return mudancas.map(mudanca => {
+                    const nomeGrupo = mudanca.cr9ff_grupodeatribuio;
+                    if (nomeGrupo && destinatariosMap.has(nomeGrupo)) {
+                        const infoGrupo = destinatariosMap.get(nomeGrupo);
+                        return { ...mudanca, cr9ff_gerente: infoGrupo.cr9ff_gerente, cr9ff_coordenador: infoGrupo.cr9ff_coordenador };
+                    }
+                    return mudanca;
+                });
+            }
+
+            async function generateOverdueReport() {
+                const [temporalResponse, aprovadasResponse] = await Promise.all([
+                    fetch(URL_VISAO_TEMPORAL, { method: 'POST' }),
+                    fetch(URL_APROVADAS, { method: 'POST' })
+                ]);
+                if (!temporalResponse.ok || !aprovadasResponse.ok) throw new Error('Falha na rede ao buscar dados do relatório.');
+
+                const temporalData = await temporalResponse.json();
+                const aprovadasData = await aprovadasResponse.json();
+                const allChanges = report_corrigirEEnriquecerMudancas(temporalData.mudancas, aprovadasData.destinatarios);
+
+                const now = new Date();
+                const oneWeekAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+                let overdueChanges = [], lastWeekOverdueCount = 0;
+
+                allChanges.forEach(m => {
+                    const endDate = report_parseDate(m['cr9ff_datadetrminoplanejada@OData.Community.Display.V1.FormattedValue']);
+                    if (endDate && endDate < now) {
+                        const daysLate = report_diffInDays(now, endDate);
+                        if (daysLate > 7) {
+                            m.daysLate = daysLate;
+                            overdueChanges.push(m);
+                             if (endDate < oneWeekAgo) lastWeekOverdueCount++;
+                        }
+                    }
+                });
+                
+                const summary = { critico: { data: {} }, atrasadas: { data: {} } };
+                const prioritySummary = { 'Crítica': {}, 'Alta': {}, 'Moderada': {}, 'Baixa': {} };
+                const coordinatorCount = {};
+
+                overdueChanges.forEach(m => {
+                    const manager = m.cr9ff_gerente || 'Não especificado';
+                    const coordinator = m.cr9ff_coordenador || 'Não especificado';
+                    const priority = report_getPriorityStyle(m.cr9ff_prioridade).text;
+                    const delayCategory = m.daysLate > 30 ? 'critico' : 'atrasadas';
+
+                    if (!summary[delayCategory].data[manager]) summary[delayCategory].data[manager] = {};
+                    if (!summary[delayCategory].data[manager][coordinator]) summary[delayCategory].data[manager][coordinator] = [];
+                    summary[delayCategory].data[manager][coordinator].push(m);
+                    
+                    if (!prioritySummary[priority][delayCategory]) prioritySummary[priority][delayCategory] = 0;
+                    prioritySummary[priority][delayCategory]++;
+                    
+                    coordinatorCount[coordinator] = (coordinatorCount[coordinator] || 0) + 1;
+                });
+
+                const topOffenders = Object.entries(coordinatorCount).sort((a, b) => b[1] - a[1]).slice(0, 3);
+                const trend = { current: overdueChanges.length, previous: lastWeekOverdueCount, change: lastWeekOverdueCount > 0 ? ((overdueChanges.length - lastWeekOverdueCount) / lastWeekOverdueCount) * 100 : 0 };
+
+                // Mapeia os destinatários em CC a partir das mudanças atrasadas
+                const ccRecipientEmails = new Set();
+                const relevantAssignmentGroups = new Set(overdueChanges.map(item => item.cr9ff_grupodeatribuio));
+                const groupEmailMap = new Map();
+                if (aprovadasData && Array.isArray(aprovadasData.destinatarios)) {
+                    aprovadasData.destinatarios.forEach(group => {
+                        if (group.cr9ff_grupodeatribuicao && group.cr9ff_destinatarios) {
+                            groupEmailMap.set(group.cr9ff_grupodeatribuicao, group.cr9ff_destinatarios);
+                        }
+                    });
+                }
+                relevantAssignmentGroups.forEach(groupName => {
+                    if (groupEmailMap.has(groupName)) {
+                        const emailString = groupEmailMap.get(groupName);
+                        emailString.split(';').forEach(email => {
+                            const trimmedEmail = email.trim();
+                            if (trimmedEmail) ccRecipientEmails.add(trimmedEmail);
+                        });
+                    }
+                });
+                const ccRecipientsString = Array.from(ccRecipientEmails).join(';');
+
+                const htmlBody = generateReportHtmlBody(summary, prioritySummary, topOffenders, trend);
+                const xlsxData = generateReportXLSX(overdueChanges);
+
+                return { htmlBody, xlsxData, ccRecipients: ccRecipientsString };
+            }
+
+            function generateReportHtmlBody(summary, prioritySummary, topOffenders, trend) {
+                const createHighlights = (top, tr) => {
+                    let trendText = tr.change > 0 ? `<span style="color: #b91c1c;">aumentou ${tr.change.toFixed(0)}%</span>` : (tr.change < 0 ? `<span style="color: #166534;">diminuiu ${Math.abs(tr.change).toFixed(0)}%</span>` : `permaneceu estável`);
+                    let offendersHtml = top.map(([name, count]) => `<tr><td style="padding: 4px 0;">${name}</td><td style="padding: 4px 0; text-align: right;"><strong>${count} mudanças</strong></td></tr>`).join('');
+                    return `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 24px;"><tr><td style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px;"><h3 style="margin: 0 0 12px 0; font-size: 16px; color: #1e293b;">Destaques Principais</h3><p style="font-size: 14px; color: #475569; margin: 0 0 12px;">O número total de mudanças atrasadas ${trendText} em relação à semana passada (de ${tr.previous} para ${tr.current}).</p><h4 style="margin: 0 0 8px; font-size: 14px; color: #1e293b;">Coordenadores com mais atrasos:</h4><table role="presentation" border="0" cellpadding="0" cellspacing="0" style="width: 100%; font-size: 14px; color: #475569;">${offendersHtml}</table></td></tr></table>`;
+                };
+                const createChart = (s) => {
+                    const criticoCount = Object.values(s.critico.data).reduce((acc, mgr) => acc + Object.values(mgr).reduce((mAcc, ch) => mAcc + ch.length, 0), 0);
+                    const atrasadasCount = Object.values(s.atrasadas.data).reduce((acc, mgr) => acc + Object.values(mgr).reduce((mAcc, ch) => mAcc + ch.length, 0), 0);
+                    const total = criticoCount + atrasadasCount;
+                    if (total === 0) return '';
+                    const bars = [{ label: 'Atraso Crítico', count: criticoCount, color: '#b91c1c' }, { label: 'Atrasadas', count: atrasadasCount, color: '#ef4444' }];
+                    let chartHtml = bars.map(bar => { const p = total > 0 ? (bar.count / total) * 100 : 0; return `<tr><td style="width: 120px; font-size: 12px; color: #475569; padding-right: 10px;">${bar.label}</td><td><table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td style="width: 100%; background-color: #e2e8f0; border-radius: 4px; height: 20px;"><div style="width: ${p}%; background-color: ${bar.color}; height: 20px; border-radius: 4px; color: white; font-size: 12px; font-weight: bold; text-align: right; padding-right: 5px; line-height: 20px;">${bar.count}</div></td></tr></table></td></tr>`; }).join('');
+                    return `<h3 style="font-size: 18px; color: #1e293b; margin: 0 0 12px 0;">Distribuição dos Atrasos</h3><table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; margin-bottom: 24px;">${chartHtml}</table>`;
+                };
+                const createPriority = (ps) => {
+                    return `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 24px;"><tr><td style="padding: 12px 16px; font-size: 16px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 8px 8px 0 0;">Atrasos por Prioridade</td></tr><tr><td><table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;"><thead><tr><th style="padding: 12px 16px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase;">Prioridade</th><th style="padding: 12px 16px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase;">Atraso Crítico</th><th style="padding: 12px 16px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase;">Atrasadas</th></tr></thead><tbody>${Object.entries(ps).map(([p, c]) => `<tr><td style="padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0;"><strong>${p}</strong></td><td style="padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0;">${c.critico || 0}</td><td style="padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0;">${c.atrasadas || 0}</td></tr>`).join('')}</tbody></table></td></tr></table>`;
+                };
+                const createManager = (title, color, data, filter) => {
+                    if (Object.keys(data).length === 0) return '';
+                    let rows = '';
+                    for (const manager in data) {
+                        for (const coordinator in data[manager]) {
+                            const changes = data[manager][coordinator];
+                            const count = changes.length;
+                            let numbersHtml = changes.slice(0, 5).map(c => c.cr9ff_nmero || 'N/A').join(', ');
+                            if (count > 5) {
+                                numbersHtml += `, <span style="color: #2563eb; text-decoration: none; font-weight: bold;">+${count - 5} a mais</span>`;
+                            }
+                            rows += `<tr>
+                                <td style="padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0;">${manager}</td>
+                                <td style="padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0;">${coordinator}</td>
+                                <td style="padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0;">${count}</td>
+                                <td style="padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #475569;">${numbersHtml}</td>
+                            </tr>`;
+                        }
+                    }
+                    return `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 24px;"><tr><td style="padding: 12px 16px; font-size: 16px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 8px 8px 0 0;"><span style="border-left: 4px solid ${color}; padding-left: 8px;">${title}</span></td></tr><tr><td><table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;"><thead><tr><th style="padding: 12px 16px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase;">Gerente</th><th style="padding: 12px 16px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase;">Coordenador</th><th style="padding: 12px 16px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase;">Qtd</th><th style="padding: 12px 16px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase;">Números das Mudanças</th></tr></thead><tbody>${rows}</tbody></table></td></tr></table>`;
+                };
+
+                return `
+                    <h2 style="font-size: 18px; color: #1e293b; margin: 0 0 4px 0;">Situação Atual: ${trend.current} Mudanças Atrasadas</h2>
+                    <p style="font-size: 12px; color: #64748b; margin: 0 0 24px 0; font-style: italic;">Nota: A contagem de atraso inicia-se somente após 7 dias da data de término planejada.</p>
+                    ${createHighlights(topOffenders, trend)}
+                    ${createChart(summary)}
+                    ${createPriority(prioritySummary)}
+                    <h3 style="font-size: 18px; color: #1e293b; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 24px;">Detalhamento por Responsável</h3>
+                    ${createManager('Atraso Crítico (> 30 dias)', '#b91c1c', summary.critico.data, 'atraso_critico')}
+                    ${createManager('Atrasadas (8-30 dias)', '#ef4444', summary.atrasadas.data, 'atrasadas')}
+                `;
+            }
+
+            function generateReportXLSX(overdueChanges) {
+                const dataForSheet = overdueChanges.map(m => ({
+                    'Número da Mudança': m.cr9ff_nmero || 'N/A',
+                    'Descrição': m.cr9ff_descrioresumida || 'N/A',
+                    'Gerente': m.cr9ff_gerente || 'Não especificado',
+                    'Coordenador': m.cr9ff_coordenador || 'Não especificado',
+                    'Data Fim Planejada': m['cr9ff_datadetrminoplanejada@OData.Community.Display.V1.FormattedValue'] || 'N/A',
+                    'Dias de Atraso': m.daysLate,
+                    'Prioridade': report_getPriorityStyle(m.cr9ff_prioridade).text
+                }));
+
+                const worksheet = XLSX.utils.json_to_sheet(dataForSheet);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Mudanças Atrasadas");
+                
+                const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+                
+                return {
+                    filename: 'Relatorio_Mudancas_Atrasadas.xlsx',
+                    content: wbout
+                };
+            }
+        });
+    </script>
+</body>
+</html>
